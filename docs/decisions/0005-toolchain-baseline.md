@@ -1,23 +1,20 @@
-# ADR 0005: Dynarmic Toolchain Baseline and Build-Time Patches
+# ADR 0005: Dynarmic Toolchain Baseline and Fork Submodule
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
-`AGENTS.md` §1 specifies `Clang >= 18` as the primary compiler baseline. On the current Arch Linux development host, `clang++-18`, `clang++-19`, and `clang++-20` are not installed (and could not be installed automatically because `apt.llvm.org` / `llvm.sh 18` targets Debian/Ubuntu and `pacman` requires interactive `sudo` authentication). The available Clang binary on the host is `/usr/bin/clang++` (`clang version 22.1.8`).
+The Hikari development host runs Arch Linux (`x86_64-pc-linux-gnu`) with `clang version 22.1.8` (`/usr/bin/clang`, `/usr/bin/clang++`). Clang 18 is not installed on this host and is not tested.
 
-Building the vendored `dynarmic` (`9d45823`) tree unmodified under Clang 22.1.8 fails in two places:
-1. The `fmt` version bundled under `third_party/dynarmic/externals/fmt/` fails `consteval` evaluation in `FMT_STRING(...)` (`os.cc` and `format-inl.h`).
-2. `third_party/dynarmic/externals/mcl/include/mcl/mp/typelist/lift_sequence.hpp` fails template-template argument deduction for `std::integer_sequence` under Clang 22.1.8.
+Building the upstream `yuzu-mirror/dynarmic` pin (`9d4582339990d4eae53f1dc7160686920fc2075c`) unmodified under Clang 22.1.8 fails in `externals/robin-map/CMakeLists.txt` (CMake `< 3.5`), `externals/fmt` (`consteval` error in `os.cc:172`), `externals/mcl/include/mcl/mp/typelist/lift_sequence.hpp` (`std::integer_sequence` specialization), and `externals/mcl/include/mcl/macro/anonymous_variable.hpp` (`-Werror,-Wc2y-extensions` on `__COUNTER__`).
 
 ## Decision
 
-1. Keep `third_party/dynarmic/` unmodified in git.
-2. Override `fmt::fmt` in `third_party/CMakeLists.txt` via `FetchContent` pinned to `fmtlib/fmt` `11.1.4` (`123913715afeb8a437e6388b4473fcc4753e1c9a`), preserving compile-time format string checking (`FMT_CONSTEVAL` is not disabled).
-3. Copy `third_party/dynarmic/externals/mcl/` to the CMake binary directory at configure time and apply `third_party/patches/0001-mcl-lift-sequence-integer-sequence.patch` via `git apply`.
-4. Scope `CMAKE_POLICY_VERSION_MINIMUM 3.5` strictly around `add_subdirectory(dynarmic)` and `unset()` it immediately after.
+- **Tested toolchain:** Clang 22.1.8 (`x86_64-pc-linux-gnu`). Clang 18 is not tested and the Clang 18 requirement is dropped.
+- **Dynarmic integration:** `third_party/dynarmic` is pinned as a git submodule to `git@github.com:Hikari-Emulator/dynarmic.git` branch `hikari/clang22-build` (`5373c127ff58449b1488a649c21686b597312917`), branched from `base/9d45823` (`9d4582339990d4eae53f1dc7160686920fc2075c`), with the four Clang 22.1.8 / CMake 4.x fixes committed in the fork.
+- **Hikari CMake isolation:** `third_party/CMakeLists.txt` sets `DYNARMIC_TESTS=OFF`, `DYNARMIC_USE_BUNDLED_EXTERNALS=ON`, `DYNARMIC_FRONTENDS="A64"`, and `DYNARMIC_WARNINGS_AS_ERRORS=OFF`, and calls `add_subdirectory(dynarmic)` without `-w`, `-Wno-error`, `FMT_CONSTEVAL=`, or `CMAKE_POLICY_VERSION_MINIMUM`.
 
 ## Consequences
 
-- `libdynarmic.a` and the full Hikari `debug` preset build and pass `ctest --preset debug` (12/12 tests) under Clang 22.1.8 without modifying tracked files under `third_party/dynarmic/`.
-- **Baseline status:** Unresolved for exact Clang 18.x (`clang++-18` was not available to test on this host); this ADR remains `Proposed` until verified on a Clang 18 CI runner or workstation.
+- `libdynarmic.a` and the full Hikari `debug` preset build and pass `ctest --preset debug` (12/12 tests) under Clang 22.1.8 (`x86_64-pc-linux-gnu`).
+- Only Clang 22.1.8 has been tested; no guest ARM64 program has run on `DynarmicBackend` yet.

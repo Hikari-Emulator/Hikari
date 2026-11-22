@@ -19,7 +19,7 @@ Hikari is a research emulator. Its central claim (bounded speculative semantic r
 ## 1. Language, toolchain, and build
 
 - **Language:** C++23.
-- **Compilers:** Clang ≥ 18 (primary), GCC ≥ 13 (secondary, must build in CI).
+- **Compilers:** Clang 22.1.8 (tested baseline on Linux x86_64; Clang 18 not tested).
 - **Build:** CMake ≥ 3.25. Presets in `CMakePresets.json` are the only supported entry points: `debug`, `release`, `asan`, `ubsan`, `tsan`, `relwithdebinfo`.
 - **Warnings:** `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wunused -Werror`. No `#pragma` suppression without a comment explaining why and a link to an issue.
 - **Static analysis:** `clang-tidy` with the repo's `.clang-tidy` must pass with zero new findings. Do not add `NOLINT` without a reason on the same line.

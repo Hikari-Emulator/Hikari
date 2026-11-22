@@ -37,7 +37,7 @@ A hardware-derived bound (the Hardware Capability Table, HCT) combined with a pr
 ### Requirements
 
 - CMake 3.25 or higher
-- Clang 18 or higher with C++23 support (primary compiler; GCC 13+ secondary)
+- Clang 22.1.8 (tested on Linux x86_64; Clang 18 not tested) with C++23 support
 - Vulkan SDK
 - GLFW 3
 

@@ -24,6 +24,7 @@ enum class RecordTag : std::uint32_t {
     kClearOp = 2,
     kDrawPatternOp = 3,
     kEndFrame = 4,
+    kSampleOp = 5,
 };
 
 struct CaptureHeader {
@@ -64,6 +65,12 @@ struct DrawPatternOpHeader {
     core::ResourceId target{};
     std::uint32_t offset = 0;
     std::uint32_t byte_length = 0;
+};
+
+struct SampleOpPayload {
+    core::ResourceId target{};
+    core::ResourceId sampled{};
+    std::uint32_t flags = 0;
 };
 
 struct CaptureRecordView {

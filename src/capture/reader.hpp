@@ -52,5 +52,7 @@ private:
     -> core::Result<ClearOpPayload>;
 [[nodiscard]] auto decode_draw_pattern_op(std::span<const std::byte> payload) noexcept
     -> core::Result<std::pair<DrawPatternOpHeader, std::span<const std::byte>>>;
+[[nodiscard]] auto decode_sample_op(std::span<const std::byte> payload) noexcept
+    -> core::Result<SampleOpPayload>;
 
 } // namespace hikari::capture

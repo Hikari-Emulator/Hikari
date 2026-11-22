@@ -30,14 +30,16 @@ void write_u64_hex_be(std::uint64_t value, std::span<char, 16> out) noexcept {
     }
 }
 
-auto as_xxh3_state(std::byte* storage) noexcept -> XXH3_state_t* {
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast) opaque C state
-    return reinterpret_cast<XXH3_state_t*>(storage);
+auto as_xxh3_state(std::byte* s) noexcept -> XXH3_state_t* {
+    // clang-format off
+    return reinterpret_cast<XXH3_state_t*>(s); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): opaque aligned storage for C XXH3_state_t
+    // clang-format on
 }
 
-auto as_xxh3_state(const std::byte* storage) noexcept -> const XXH3_state_t* {
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast) opaque C state
-    return reinterpret_cast<const XXH3_state_t*>(storage);
+auto as_xxh3_state(const std::byte* s) noexcept -> const XXH3_state_t* {
+    // clang-format off
+    return reinterpret_cast<const XXH3_state_t*>(s); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): opaque aligned storage for C XXH3_state_t
+    // clang-format on
 }
 
 } // namespace

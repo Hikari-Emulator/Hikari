@@ -61,27 +61,49 @@ auto tag_name(hikari::capture::RecordTag tag) noexcept -> std::string_view {
         return "DrawPatternOp";
     case hikari::capture::RecordTag::kEndFrame:
         return "EndFrame";
+    case hikari::capture::RecordTag::kSampleOp:
+        return "SampleOp";
     }
     return "Unknown";
 }
 
+auto write_fixture_option(std::string_view flag, std::string_view out_path) -> int {
+    hikari::core::Result<std::vector<std::byte>> fixture =
+        hikari::core::make_error(hikari::core::ErrorCode::kInvalidArgument, "unknown flag");
+    if (flag == "--write-synthetic") {
+        fixture = hikari::capture::build_synthetic_fixture();
+    } else if (flag == "--write-barrier-reordered") {
+        fixture = hikari::capture::build_barrier_reordered_fixture();
+    } else if (flag == "--write-empty-frame") {
+        fixture = hikari::capture::build_empty_frame_fixture();
+    } else if (flag == "--write-incomplete-dep") {
+        fixture = hikari::capture::build_incomplete_dependency_fixture();
+    } else if (flag == "--write-dead-write") {
+        fixture = hikari::capture::build_dead_write_fixture();
+    }
+    if (!fixture) {
+        std::println(stderr, "capdump: failed to build fixture for {}", flag);
+        return 1;
+    }
+    if (!write_file_bytes(out_path, *fixture)) {
+        std::println(stderr, "capdump: failed to write {}", out_path);
+        return 1;
+    }
+    std::println("wrote {} bytes to {}", fixture->size(), out_path);
+    return 0;
+}
+
 auto run(const std::vector<std::string_view>& args) -> int {
-    if (args.size() == 3 && args.at(1) == "--write-synthetic") {
-        const auto fixture = hikari::capture::build_synthetic_fixture();
-        if (!fixture) {
-            std::println(stderr, "capdump: failed to build synthetic fixture");
-            return 1;
-        }
-        if (!write_file_bytes(args.at(2), *fixture)) {
-            std::println(stderr, "capdump: failed to write {}", args.at(2));
-            return 1;
-        }
-        std::println("wrote {} bytes to {}", fixture->size(), args.at(2));
-        return 0;
+    if (args.size() == 3 &&
+        (args.at(1) == "--write-synthetic" || args.at(1) == "--write-barrier-reordered" ||
+         args.at(1) == "--write-empty-frame" || args.at(1) == "--write-incomplete-dep" ||
+         args.at(1) == "--write-dead-write")) {
+        return write_fixture_option(args.at(1), args.at(2));
     }
 
     if (args.size() != 2) {
-        std::println(stderr, "usage: hikari_capdump [--write-synthetic <out>] | <capture>");
+        std::println(stderr, "usage: hikari_capdump [--write-synthetic|--write-barrier-reordered|"
+                             "--write-empty-frame <out>] | <capture>");
         return 2;
     }
 

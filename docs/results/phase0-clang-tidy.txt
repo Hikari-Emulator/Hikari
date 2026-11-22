@@ -1,0 +1,26 @@
+[1/12] Processing file /home/lux/Hikari-Emulator/src/capture/fixture.cpp.
+7831 warnings generated.
+[2/12] Processing file /home/lux/Hikari-Emulator/src/capture/reader.cpp.
+17005 warnings generated.
+[3/12] Processing file /home/lux/Hikari-Emulator/src/capture/writer.cpp.
+24893 warnings generated.
+[4/12] Processing file /home/lux/Hikari-Emulator/src/core/assert.cpp.
+25702 warnings generated.
+[5/12] Processing file /home/lux/Hikari-Emulator/src/core/hash.cpp.
+40385 warnings generated.
+[6/12] Processing file /home/lux/Hikari-Emulator/src/validate/reference_replay.cpp.
+48268 warnings generated.
+[7/12] Processing file /home/lux/Hikari-Emulator/src/validate/ref_replay_main.cpp.
+63067 warnings generated.
+[8/12] Processing file /home/lux/Hikari-Emulator/tests/golden/determinism_test.cpp.
+75519 warnings generated.
+[9/12] Processing file /home/lux/Hikari-Emulator/tests/golden/fixture_relations_test.cpp.
+87971 warnings generated.
+[10/12] Processing file /home/lux/Hikari-Emulator/tests/unit/capture_test.cpp.
+100423 warnings generated.
+[11/12] Processing file /home/lux/Hikari-Emulator/tests/unit/replay_alloc_test.cpp.
+113950 warnings generated.
+[12/12] Processing file /home/lux/Hikari-Emulator/tools/capdump/main.cpp.
+128749 warnings generated.
+Suppressed 128757 warnings (128749 in non-user code, 8 NOLINT).
+Use -header-filter=.* or leave it as default to display errors from all non-system headers. Use -system-headers to display errors from system headers as well.

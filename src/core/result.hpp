@@ -14,6 +14,7 @@ enum class ErrorCode : std::uint32_t {
     kIntegrityMismatch = 5,
     kIoError = 6,
     kOverflow = 7,
+    kNotImplemented = 8,
 };
 
 struct Error {

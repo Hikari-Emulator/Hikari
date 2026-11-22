@@ -34,6 +34,8 @@ if(NOT glfw3_FOUND AND NOT TARGET glfw)
     message(FATAL_ERROR "GLFW 3 (glfw3) is required but was not found.")
 endif()
 
+add_subdirectory(third_party)
+
 add_subdirectory(src/core)
 add_subdirectory(src/capture)
 add_subdirectory(src/loader)

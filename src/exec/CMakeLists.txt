@@ -1,5 +1,6 @@
 add_library(hikari_exec STATIC
     gfx/executor.cpp
+    specialized_selector.cpp
 )
 
 target_include_directories(hikari_exec PUBLIC

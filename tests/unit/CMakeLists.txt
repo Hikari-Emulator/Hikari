@@ -53,3 +53,15 @@ target_link_libraries(hikari_unit_specialized_selector_test
 )
 
 add_test(NAME unit.specialized_selector COMMAND hikari_unit_specialized_selector_test)
+
+add_executable(hikari_unit_lifecycle_typestate_test
+    lifecycle_typestate_test.cpp
+)
+
+target_link_libraries(hikari_unit_lifecycle_typestate_test
+    PRIVATE
+        hikari_erg
+        hikari_warnings
+)
+
+add_test(NAME unit.lifecycle_typestate COMMAND hikari_unit_lifecycle_typestate_test)

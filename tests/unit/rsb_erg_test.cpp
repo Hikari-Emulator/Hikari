@@ -102,6 +102,23 @@ void test_rsb_bound() {
                  static_cast<unsigned>(rejected.error().code));
 }
 
+void test_erg_liveness_on_fixture_d() {
+    const auto fix_d = hikari::capture::build_incomplete_dependency_fixture();
+    HIKARI_CHECK(fix_d.has_value());
+
+    const auto outcome = hikari::validate::replay_rsb_erg_hashes(*fix_d);
+    HIKARI_CHECK(outcome.has_value());
+    HIKARI_CHECK(outcome->frames.size() == 1U);
+
+    // Fixture D Frame 0 emits ClearOp({1,1}) followed by SampleOp(target={1,1}, sampled={3,1}).
+    // ClearOp({1,1}) must NOT be pruned by liveness.
+    HIKARI_CHECK(outcome->frames.at(0).nodes_removed_by_liveness == 0U);
+    std::println("erg_liveness fixture=D frame0_before={} frame0_removed={} frame0_after={}",
+                 outcome->frames.at(0).nodes_before_liveness,
+                 outcome->frames.at(0).nodes_removed_by_liveness,
+                 outcome->frames.at(0).nodes_after_liveness);
+}
+
 void test_erg_liveness_on_fixture_e() {
     const auto fix_e = hikari::capture::build_dead_write_fixture();
     HIKARI_CHECK(fix_e.has_value());
@@ -169,6 +186,7 @@ int main() {
     try {
         test_rsb_determinism();
         test_rsb_bound();
+        test_erg_liveness_on_fixture_d();
         test_erg_liveness_on_fixture_e();
         test_erg_relevance_never_removes();
         std::println("rsb_erg_test: all checks passed");

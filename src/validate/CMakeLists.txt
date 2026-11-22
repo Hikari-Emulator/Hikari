@@ -1,6 +1,7 @@
 add_library(hikari_validate STATIC
     reference_replay.cpp
     rsb_erg_replay.cpp
+    ${CMAKE_SOURCE_DIR}/src/erg/placement_policy.cpp
 )
 
 target_include_directories(hikari_validate PUBLIC

@@ -41,3 +41,19 @@ target_link_libraries(hikari_golden_rsb_erg_diff_test
 )
 
 add_test(NAME golden.rsb_erg_diff COMMAND hikari_golden_rsb_erg_diff_test)
+
+add_executable(hikari_golden_h7_relevance_placement_diff_test
+    h7_relevance_placement_diff_test.cpp
+)
+
+target_link_libraries(hikari_golden_h7_relevance_placement_diff_test
+    PRIVATE
+        hikari_validate
+        hikari_erg
+        hikari_rsb
+        hikari_capture
+        hikari_core
+        hikari_warnings
+)
+
+add_test(NAME golden.h7_relevance_placement_diff COMMAND hikari_golden_h7_relevance_placement_diff_test)

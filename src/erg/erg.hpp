@@ -13,6 +13,8 @@ namespace hikari::erg {
 struct ErgNode {
     rsb::SemanticState state{};
     bool has_side_effect = false;
+    bool overwrites_in_full = true;
+    bool reads_target = false;
     bool speculative = false;
     std::uint64_t spec_id = 0;
     std::int64_t hotness = 0;

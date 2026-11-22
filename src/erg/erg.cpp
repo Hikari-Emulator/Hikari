@@ -26,7 +26,8 @@ auto is_overwritten_after(const ErgNode& node, std::span<const ErgNode> all_node
     std::uint32_t next_write_op = 0;
     for (const ErgNode& candidate : all_nodes) {
         if (candidate.state.resource_id == node.state.resource_id &&
-            candidate.state.producer_op_index > node.state.producer_op_index) {
+            candidate.state.producer_op_index > node.state.producer_op_index &&
+            candidate.overwrites_in_full && !candidate.has_side_effect && !candidate.reads_target) {
             if (!found || candidate.state.producer_op_index < next_write_op) {
                 found = true;
                 next_write_op = candidate.state.producer_op_index;

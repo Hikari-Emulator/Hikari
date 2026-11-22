@@ -270,8 +270,11 @@ auto process_rsb_erg_record(const capture::CaptureRecordView& rec, RsbErgLoopSta
         }
         const auto produced = make_produced_state(st.ctx, decoded->first.target,
                                                   rsb::ResourceFormat::kR32Uint, st.op_index);
-        st.frame_graph.add_node(
-            erg::ErgNode{.state = produced, .has_side_effect = true, .hotness = 20});
+        st.frame_graph.add_node(erg::ErgNode{.state = produced,
+                                             .has_side_effect = true,
+                                             .overwrites_in_full = false,
+                                             .reads_target = true,
+                                             .hotness = 20});
         st.frame_ops.push_back(FrameOpRecord{.op_index = st.op_index,
                                              .tag = rec.tag,
                                              .flags = rec.flags,
@@ -292,7 +295,12 @@ auto process_rsb_erg_record(const capture::CaptureRecordView& rec, RsbErgLoopSta
         }
         const auto produced = make_produced_state(st.ctx, decoded->target,
                                                   rsb::ResourceFormat::kRgba8Unorm, st.op_index);
-        st.frame_graph.add_node(erg::ErgNode{.state = produced, .hotness = 30});
+        st.frame_graph.add_node(erg::ErgNode{
+            .state = produced,
+            .overwrites_in_full = false,
+            .reads_target = true,
+            .hotness = 30,
+        });
         st.frame_ops.push_back(FrameOpRecord{.op_index = st.op_index,
                                              .tag = rec.tag,
                                              .flags = rec.flags,

@@ -32,12 +32,12 @@ auto compare_fixture(std::string_view name, std::span<const std::byte> capture_b
         HIKARI_CHECK(rsb_res.has_value());
         for (const auto& f : rsb_res->frames) {
             const auto rsb_hex = hikari::core::format_hash128(f.frame_hash.semantic_content_hash);
-            std::println("diff fixture={} frame={} reference=ERROR(code={}) rsb_erg={} "
-                         "status=REF_ERROR_RSB_RESOLVED spec_candidates={} pruned={}",
-                         name, f.frame_hash.frame_index.value,
-                         static_cast<unsigned>(ref_res.error().code),
-                         std::string_view{rsb_hex.data(), 32}, f.speculative_candidates_resolved,
-                         f.nodes_removed_by_liveness);
+            std::println(
+                "diff fixture={} frame={} reference=ERROR(code={}) rsb_erg={} "
+                "status=reference error, comparison not possible spec_candidates={} pruned={}",
+                name, f.frame_hash.frame_index.value, static_cast<unsigned>(ref_res.error().code),
+                std::string_view{rsb_hex.data(), 32}, f.speculative_candidates_resolved,
+                f.nodes_removed_by_liveness);
         }
         return rsb_res->frames.size();
     }

@@ -1,5 +1,6 @@
 add_library(hikari_checkpoint STATIC
     checkpoint.cpp
+    fault_recovery.cpp
     speculative_override.cpp
 )
 

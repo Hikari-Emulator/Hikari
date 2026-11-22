@@ -36,4 +36,5 @@ endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/capture)
+add_subdirectory(src/validate)
 add_subdirectory(tools/capdump)

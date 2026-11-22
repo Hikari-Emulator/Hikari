@@ -19,6 +19,7 @@ public:
     void emit_clear(core::ResourceId target, std::uint32_t rgba_value, std::uint32_t flags = 0);
     void emit_draw_pattern(core::ResourceId target, std::uint32_t offset,
                            std::span<const std::byte> pattern_bytes);
+    void emit_sample(core::ResourceId target, core::ResourceId sampled, std::uint32_t flags = 0);
     void end_frame(core::FrameIndex frame_index);
 
     [[nodiscard]] auto finalize() const -> core::Result<std::vector<std::byte>>;

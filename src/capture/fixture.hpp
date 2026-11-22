@@ -20,4 +20,12 @@ namespace hikari::capture {
 // zero operations between BeginFrame(1) and EndFrame(1).
 [[nodiscard]] auto build_empty_frame_fixture() -> core::Result<std::vector<std::byte>>;
 
+// Builds Fixture D: 1-frame capture that clears color_target {1, 1} and then
+// emits SampleOp sampling resource R = {3, 1}, which is never written in the capture.
+[[nodiscard]] auto build_incomplete_dependency_fixture() -> core::Result<std::vector<std::byte>>;
+
+// Builds Fixture E: same as build_synthetic_fixture() (Fixture A), except Frame 0
+// has an extra dead ClearOp on color_target {1, 1} overwritten before any read.
+[[nodiscard]] auto build_dead_write_fixture() -> core::Result<std::vector<std::byte>>;
+
 } // namespace hikari::capture

@@ -44,6 +44,8 @@ auto parse_record_tag(std::uint32_t raw) noexcept -> core::Result<RecordTag> {
         return RecordTag::kDrawPatternOp;
     case 4U:
         return RecordTag::kEndFrame;
+    case 5U:
+        return RecordTag::kSampleOp;
     default:
         return core::make_error(core::ErrorCode::kInvalidArgument, "unknown record tag");
     }
@@ -195,6 +197,26 @@ auto decode_draw_pattern_op(std::span<const std::byte> payload) noexcept
                                 "DrawPatternOp byte_length mismatch");
     }
     return std::pair{header, pattern};
+}
+
+auto decode_sample_op(std::span<const std::byte> payload) noexcept
+    -> core::Result<SampleOpPayload> {
+    if (payload.size() != 20) {
+        return core::make_error(core::ErrorCode::kInvalidArgument, "invalid SampleOp payload size");
+    }
+    return SampleOpPayload{
+        .target =
+            core::ResourceId{
+                .index = read_u32_le(payload.subspan(0, 4)),
+                .generation = read_u32_le(payload.subspan(4, 4)),
+            },
+        .sampled =
+            core::ResourceId{
+                .index = read_u32_le(payload.subspan(8, 4)),
+                .generation = read_u32_le(payload.subspan(12, 4)),
+            },
+        .flags = read_u32_le(payload.subspan(16, 4)),
+    };
 }
 
 } // namespace hikari::capture

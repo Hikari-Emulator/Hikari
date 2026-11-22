@@ -40,7 +40,29 @@ struct ReplayState {
     bool in_frame = false;
     core::FrameIndex active_frame{};
     std::size_t frame_count = 0;
+    std::array<core::ResourceId, 32> written_resources{};
+    std::size_t written_count = 0;
 };
+
+void record_written_resource(ReplayState& state, core::ResourceId res) noexcept {
+    for (std::size_t i = 0; i < state.written_count; ++i) {
+        if (state.written_resources.at(i) == res) {
+            return;
+        }
+    }
+    if (state.written_count < state.written_resources.size()) {
+        state.written_resources.at(state.written_count++) = res;
+    }
+}
+
+auto is_resource_written(const ReplayState& state, core::ResourceId res) noexcept -> bool {
+    for (std::size_t i = 0; i < state.written_count; ++i) {
+        if (state.written_resources.at(i) == res) {
+            return true;
+        }
+    }
+    return false;
+}
 
 auto handle_begin_frame(const capture::CaptureRecordView& rec, ReplayState& state) noexcept
     -> core::Result<void> {
@@ -102,6 +124,7 @@ auto process_record(const capture::CaptureRecordView& rec, ReplayState& state,
         if (!decoded) {
             return std::unexpected{decoded.error()};
         }
+        record_written_resource(state, decoded->target);
         hash_u32_le(state.frame_hasher, static_cast<std::uint32_t>(rec.tag));
         hash_u32_le(state.frame_hasher, rec.flags);
         state.frame_hasher.update(rec.payload);
@@ -116,6 +139,25 @@ auto process_record(const capture::CaptureRecordView& rec, ReplayState& state,
         if (!decoded) {
             return std::unexpected{decoded.error()};
         }
+        record_written_resource(state, decoded->first.target);
+        hash_u32_le(state.frame_hasher, static_cast<std::uint32_t>(rec.tag));
+        hash_u32_le(state.frame_hasher, rec.flags);
+        state.frame_hasher.update(rec.payload);
+        return {};
+    }
+    case capture::RecordTag::kSampleOp: {
+        if (!state.in_frame) {
+            return core::make_error(core::ErrorCode::kInvalidArgument, "SampleOp outside of frame");
+        }
+        const auto decoded = capture::decode_sample_op(rec.payload);
+        if (!decoded) {
+            return std::unexpected{decoded.error()};
+        }
+        if (!is_resource_written(state, decoded->sampled)) {
+            return core::make_error(core::ErrorCode::kInvalidArgument,
+                                    "unresolved resource dependency in reference replay");
+        }
+        record_written_resource(state, decoded->target);
         hash_u32_le(state.frame_hasher, static_cast<std::uint32_t>(rec.tag));
         hash_u32_le(state.frame_hasher, rec.flags);
         state.frame_hasher.update(rec.payload);

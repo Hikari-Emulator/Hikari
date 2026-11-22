@@ -61,6 +61,18 @@ void CaptureWriter::emit_draw_pattern(core::ResourceId target, std::uint32_t off
     append_bytes(pattern_bytes);
 }
 
+void CaptureWriter::emit_sample(core::ResourceId target, core::ResourceId sampled,
+                                std::uint32_t flags) {
+    HIKARI_ASSERT(in_frame_);
+    constexpr std::uint64_t kPayloadBytes = 20;
+    append_record_header(RecordTag::kSampleOp, 0, kPayloadBytes);
+    append_u32_le(target.index);
+    append_u32_le(target.generation);
+    append_u32_le(sampled.index);
+    append_u32_le(sampled.generation);
+    append_u32_le(flags);
+}
+
 void CaptureWriter::end_frame(core::FrameIndex frame_index) {
     HIKARI_ASSERT(in_frame_);
     HIKARI_ASSERT(frame_index == active_frame_);

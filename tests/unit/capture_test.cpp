@@ -40,6 +40,11 @@ void check_record(const hikari::capture::CaptureRecordView& rec, std::size_t& cl
         HIKARI_CHECK(decoded.has_value());
         break;
     }
+    case hikari::capture::RecordTag::kSampleOp: {
+        const auto decoded = hikari::capture::decode_sample_op(rec.payload);
+        HIKARI_CHECK(decoded.has_value());
+        break;
+    }
     }
 }
 

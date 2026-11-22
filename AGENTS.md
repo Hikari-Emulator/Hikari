@@ -69,12 +69,17 @@ Hikari is a research emulator. Its central claim (bounded speculative semantic r
 Metaprogramming is a tool for **removing runtime dispatch and encoding invariants at compile time**, not for showing technique. Each use must justify itself by one of: eliminating a hot-path branch, making an invariant unrepresentable, or generating verified data from a single source.
 
 ### 3.1 Allowed
-- **Policy-based templates for GPU frontends.** `template <class Gen> class GpuFrontend` where `Gen` satisfies a `GpuGeneration` concept (see §3.2). Maxwell and Ampere are instantiated, not virtually dispatched, in the hot path.
-- **`constexpr` tables** for the Hardware Capability Table when the source data is static. Table validation (ranges, monotonicity, no duplicate keys) runs at compile time via `static_assert`.
-- **Concepts** to constrain every template parameter. Unconstrained template parameters are rejected in review.
-- **Code generation from data.** The HCT source of truth is `data/hct/*.toml`. A generator (`tools/hctgen`) produces `hct_generated.hpp` with a checked-in output and a CI check that the generated file matches the source. Generated files are never hand-edited.
-- **`if constexpr`** for generation-specific branches inside a single template, instead of duplicating code.
-- **Type-level state encoding** where it removes runtime checks, e.g., a `Recording` vs `Recorded` capture type so that replay cannot be called on an open capture.
+- **Policy-based templates for GPU frontends.** `template <class Gen> class GpuFrontend` where `Gen` satisfies a `GpuGeneration` concept (see §3.2). Maxwell and Ampere are instantiated, not virtually dispatched, in the hot path. [DECISION]
+- **`constexpr` tables** for the Hardware Capability Table when the source data is static. Table validation (ranges, monotonicity, no duplicate keys) runs at compile time via `static_assert`. [DECISION]
+- **Concepts** to constrain every template parameter. Unconstrained template parameters are rejected in review. [DECISION]
+- **Code generation from data.** The HCT source of truth is `data/hct/*.toml`. A generator (`tools/hctgen`) produces `hct_generated.hpp` with a checked-in output and a CI check that the generated file matches the source. Generated files are never hand-edited. [DECISION]
+- **`if constexpr`** for generation-specific branches inside a single template, instead of duplicating code. [STANDARD]
+- **Type-level state encoding** where it removes runtime checks, e.g., a `Recording` vs `Recorded` capture type so that replay cannot be called on an open capture. [DECISION]
+- **Allowed with ADR, not yet implemented:**
+  - `constexpr` transition table, validated by `static_assert` that every `(state, event)` pair is either listed or explicitly marked illegal. Note: this checks the table's completeness, not the runtime behavior. [DECISION]
+  - Concepts that constrain which state kinds may be admitted into the ERG. [DECISION]
+  - Typestate: [HYPOTHESIS] (`tests/unit/lifecycle_typestate_test`, metric: count of compile-time vs runtime-checked transition sites) that typestate is usable for transitions. State held in containers and transitioned by events loses static guarantees at the container boundary; the compile-time guarantee ends where a state is erased into a homogeneous container (`std::vector<SemanticState>` or pool slot) and runtime event dispatch takes over.
+- **Not allowed without RFC:** expression templates, CRTP hierarchies deeper than one level, reflection-based serialization, template recursion deeper than needed by the concept. [DECISION]
 
 ### 3.2 The frontend contract (concept)
 ```cpp
@@ -182,142 +187,238 @@ Allowed: include guards (`#pragma once` is acceptable), `HIKARI_ASSERT`, `HIKARI
 
 ## 7. Architecture
 
-### 7.1 Overview
-```text
-Guest image ─► Loader ─► Process & memory setup
-                   │
-   ┌───────────────┴───────────────┐
-   ▼                               ▼
-CPU (Dynarmic)                   Services (HLE)
-   │                               │
-   └──────► GPU command queue ◄────┘
-                   │
-                   ▼
-          GPU frontend<Gen>        [Maxwell | Ampere]
-                   │
-                   ▼
-            Capture writer
-                   │
-   ┌───────────────┴───────────────────┐
-   │  Hardware Capability Table (HCT)  │   static, generated
-   │  Context model                    │   per-resource state
-   └───────────────┬───────────────────┘
-                   ▼
-     RSB (bounded hypothesis)      [experimental]
-                   │
-                   ▼
-ERG: liveness → HCT bound → relevance (ordering only)
-                   │
-                   ▼
-     Semantic IR (versioned contract)
-                   │
-   ┌───────────────┴───────────────┐
-   ▼                               ▼
-Vulkan executor                  Reference path
-   │                               │
-   ▼                               │
-Frame output                       │
-   └──────────► Validator ◄────────┘
-                   │
-    pass / mismatch → checkpoint & rollback
-```
+### 7.1 Runtime model
 
-### 7.2 Module layout
+1. **Guest CPU execution (Owner: CPU thread).** Guest CPU (Dynarmic) executes guest code. Input: guest memory image. Output: GPU command words written to the command queue. [STANDARD]
+2. **Command decode (Owner: GPU frontend thread).** GPU frontend decodes command words into semantic operations, and emits them into the current frame's operation list. Input: GPU command words from the command queue. Output: operations tagged with the state IDs they read and write. [DECISION] (ADR pending)
+3. **Relevance tracking (Owner: GPU frontend thread, or dedicated tracker thread).** State tracker updates each state's relevance inputs after every frame (see §7.4). Input: frame operation list and state access counts. Output: updated per-state relevance inputs. [DECISION-PENDING]:
+   - *Option A (tracker on GPU frontend thread):* zero cross-thread synchronization cost between decode and tracking, but increases frontend thread per-frame latency.
+   - *Option B (tracker on its own thread):* requires an SPSC/MPSC event queue or double-buffered relevance snapshot per frame and explicit memory ordering between the tracker thread and ERG placement on the frontend thread.
+4. **ERG placement (Owner: GPU frontend thread).** ERG decides placement: `ACTIVE` or `CACHED`. Input: per-state relevance inputs and placement threshold. Output: lifecycle state placement (`ACTIVE` or `CACHED`). Placement is a function of relevance inputs and the placement threshold. [DECISION-PENDING]: threshold function form and window length `N` (see §7.4).
+5. **Cached state reactivation (Owner: GPU frontend thread).** On a request for a cached state, ERG runs the guard check (§7.5) and either reactivates the state or marks it `STALE`. Input: `CACHED` state and its attached `Guard`. Output: `ACTIVE` state (on guard pass) or `STALE` state (on guard failure). [DECISION] (ADR pending)
+6. **Hardware boundary check (Owner: GPU frontend thread).** ERG checks each `ACTIVE` state against the hardware boundary specs (§7.6). Input: `ACTIVE` state and generation boundary specs. Output: `ACTIVE` state (if all predicates hold) or transition to `QUARANTINED` plus a resolution request submitted to RSB (on violation). [DECISION] (ADR pending)
+7. **RSB candidate generation (Owner: GPU frontend thread / RSB worker; see §5 conflict note in §7.12).** RSB produces a candidate for a quarantined state. Input: quarantined state, boundary violation ID, and context. Output: speculative `Candidate` with `spec_id`. Execution continues with the quarantined state's current contents, and the frame carries a speculation marker. [DECISION] (ADR pending)
+8. **Override scheduling and application (Owner: GPU frontend thread).** When RSB returns, the override is recorded (§7.7) and applied at a synchronization boundary. Input: RSB `Candidate` and override record. Output: state transitioned from `QUARANTINED` to `OVERRIDDEN`, then to `ACTIVE` when applied at the synchronization boundary. [DECISION-PENDING]: definition of the synchronization boundary (end of current render pass vs next frame boundary; see §7.7).
+9. **IR emission (Owner: GPU frontend thread).** Frame is emitted as IR to the executor queue, tagged `FINAL` or `SPECULATIVE` (§7.8, §7.9). Input: frame operation list and active/speculative state set. Output: immutable IR packet queued for the executor thread. [DECISION] (ADR pending)
+10. **Vulkan execution (Owner: Executor thread).** Vulkan executor consumes IR packets in order, records command buffers, and submits. Input: ordered IR packets from the executor queue. Output: submitted Vulkan command buffers and frame output. It makes no semantic decisions. [DECISION] (ADR pending)
+
+### 7.2 Module layout and data model
+
 ```text
 src/
   core/        assert, log, result, arena, pool, handles, hashing
+  capture/     capture format v1 writer, reader, synthetic fixtures (added in Phase 0)
   loader/      image parsing, memory layout
   cpu/         Dynarmic integration, interpreter fallback
   services/    HLE services (minimal, test-driven)
   gpu/
-    frontend/  template <Gen> frontend, capture writer
+    frontend/  template <Gen> frontend, capture writer, state tracker
     gen/       maxwell/, ampere/ (decode tables, command words)
-    hct/       generated HCT, generator glue
-  rsb/         bounded hypothesis generation, guards
-  erg/         liveness, bound filter, relevance ordering
-  ir/          semantic IR definitions, serialization, versioning
+    hct/       generated HCT / hardware boundary specs, generator glue
+  rsb/         bounded hypothesis generation, candidate resolution
+  erg/         placement (ACTIVE/CACHED), guard checks, boundary checks, lifecycle state machine
+  ir/          semantic IR definitions, packet serialization, versioning
   exec/        executor interface, Vulkan backend (gfx/)
   validate/    reference path, hashing, comparison, metrics
-  checkpoint/  snapshot and rollback
+  checkpoint/  snapshot, override logging, and rollback
 tools/
   hctgen/      HCT generator
-  capdump/     capture inspection (read-only)
+  capdump/     capture inspection and fixture output
 tests/
   unit/ integration/ golden/ fault/ bench/
 data/
   hct/         TOML source of truth
 docs/
-  rfcs/ concurrency.md decisions/ (ADRs)
+  rfcs/ concurrency.md decisions/ (ADRs) results/
 ```
 
-### 7.3 Components
+#### Data model structures
 
-**Loader, memory, CPU, services [standard].** Dynarmic is used as a dependency, not reimplemented. Interpreter first for validation; JIT enabled after the baseline is green. Services implemented on demand by test ROM need.
+- **`SemanticState`:**
+  - `id`: `StateId` (`index: uint32`, `generation: uint32`). Invariant: `generation` increments on slot reuse; `index` addresses the state pool. [STANDARD]
+  - `kind`: enum `{Surface, Buffer, Texture, ShaderBinding, RasterState, BlendState, DepthState, Other}`. Invariant: exhaustive enum with no unspecified numeric values. [DECISION] (ADR pending)
+  - `format`: format identifier from the capture's format table. Invariant: must map to a format entry in the capture or `kUnknown` prior to initialization. [DECISION] (ADR pending)
+  - `dimensions`: per-kind extent (`width`, `height`, `depth` or byte length for `Buffer`; zeroed for non-dimensional state kinds). [DECISION] (ADR pending)
+  - `producer_op`: `uint32` index of the operation that last wrote this state. Invariant: monotonically increases on each write within a capture stream. [DECISION] (ADR pending)
+  - `content_hash`: `XXH3-128` computed over semantic fields only, not guest memory bytes. [DECISION] (from §6.2, ADR-0001)
+  - `lifecycle`: `LifecycleState` enum (`{ACTIVE, CACHED, STALE, QUARANTINED, OVERRIDDEN}`, §7.4). [DECISION] (ADR pending)
+  - `lifecycle_entered_frame`: `FrameIndex` (`uint64`) of the last lifecycle transition. [DECISION] (ADR pending)
+  - `quarantine_reason`: `BoundaryId` or `none`. Invariant: non-empty if and only if `lifecycle == QUARANTINED` or transitioning through override from quarantine. [DECISION] (ADR pending)
+  - `guard`: `Guard` variant (§7.5). Invariant: populated whenever `lifecycle == CACHED` or `speculation_id != none`. [DECISION] (ADR pending)
+  - `speculation_id`: `SpecId` (`uint64`) or `none`. Invariant: non-empty while a state is under active speculation prior to override application. [DECISION] (ADR pending)
 
-**GPU frontend [standard/hypothesis].** Templated on generation. Decodes command words into capture entries. Must be deterministic. Maxwell is implemented first and serves as the reference generation.
+- **`Guard` (variant, three kinds only):**
+  - `VersionGuard {resource_id, expected_version}`: valid while the resource's current version in the context model equals `expected_version`. [DECISION] (ADR pending)
+  - `DirtyRangeGuard {guest_range_start, guest_range_end, epoch}`: valid while no guest memory write has marked `[guest_range_start, guest_range_end)` dirty after `epoch`, with `guest_range_start <= guest_range_end`. [DECISION] (ADR pending)
+  - `SyncGuard {barrier_op_index}`: valid only if no barrier between producer and consumer was removed or reordered relative to `barrier_op_index`. [DECISION] (ADR pending)
+  - Any guard kind not listed above requires an RFC in `docs/rfcs/`. [DECISION] (ADR pending)
 
-**Capture writer [hypothesis].** Serializes decoded operations, resource versions, ordering, and synchronization into the capture format (§6.1). The capture is the unit of replay and the ground truth source.
+### 7.3 Invariants
 
-**Hardware Capability Table (HCT) [hypothesis].** Per-generation constraints: supported formats, binding limits, size limits, and impossible combinations. Each entry carries `source`, `confidence` (`documented`, `measured`, `inferred`), and `verified_by` (test ID). Enforcement rule: HCT removes only candidates that cannot exist on the target hardware. It never removes candidates merely because they are rare.
+1. Capture is a deterministic function of its input. [DECISION] (ADR-0001)
+2. Hardware boundary specs with `confidence = documented` or `measured` flag only states that cannot exist on the target hardware. [DECISION] (ADR pending)
+3. Relevance-driven `CACHED` placement is tested against the reference path under hypothesis H7 (§7.11). [HYPOTHESIS] (`tests/golden/h7_relevance_placement_diff_test`, metric: per-frame and per-region hash mismatch count vs reference path)
+4. Every speculative state and override is traceable to its `spec_id`, `guard`, `quarantine_reason`, and candidate set. [DECISION] (ADR pending)
+5. The executor makes no semantic decisions. [DECISION] (ADR pending)
+6. The reference path is independent of the state tracker, ERG placement, RSB, speculative caches, and override state. [DECISION] (ADR-0001)
+7. Side-effecting operations are never removed. [DECISION] (ADR pending)
+8. IR packets are immutable after emission. [DECISION] (ADR pending)
+9. Frame output is a function of `(capture, configuration, seed)`. Non-determinism is a test failure. [DECISION] (ADR-0001)
 
-**Context model [hypothesis].** Per-resource state for each point in the capture:
-- value (binding, format, dimensions)
-- version (monotonic per resource)
-- ordering (position relative to barriers and render-pass boundaries)
-- synchronization state (last writer, pending reads, fences)
-- dirty guest ranges
+### 7.4 Lifecycle state machine
 
-Context is what RSB uses to guess and what ERG uses to decide relevance of guesses. Omitting ordering and synchronization from the context model is a known source of false prunes and is forbidden.
+States: `ACTIVE`, `CACHED`, `STALE`, `QUARANTINED`, `OVERRIDDEN`. [DECISION] (ADR pending)
 
-**RSB (bounded hypothesis) [hypothesis, experimental].** Invoked only when a dependency is incomplete. Chooses one candidate from the set permitted by HCT and ERG.
-- Candidate set is computed before selection; RSB does not generate candidates outside it.
-- Every output is marked `speculative` with a unique `spec_id` and a `guard`: a predicate that must still hold for the node to remain valid (e.g., "resource R version == v at capture position p").
-- Selection is deterministic given the seed in the run manifest.
-- RSB has no direct access to the executor or Vulkan.
+Trigger events (8 total): `PLACEMENT_EVICT`, `REQUEST_HIT`, `CACHE_CAPACITY`, `BOUNDARY_VIOLATION`, `BOUNDARY_VIOLATION_INFERRED`, `RSB_RESOLVED`, `RSB_FAILED`, `OVERRIDE_APPLIED`.
 
-**ERG (three layered filters) [hypothesis].** Applied in fixed order:
-1. **Liveness:** removes nodes proven dead (written and overwritten before any read, with no side effects). Only nodes with a proof are removed.
-2. **Hardware bound:** removes RSB candidates that violate HCT. Only impossible candidates are removed.
-3. **Relevance:** orders candidates by hotness and history. **Never removes.** Relevance can only affect order and therefore which candidate RSB prefers when multiple are equally valid.
+| From | To | Trigger | Condition | Side effects | Tag |
+|---|---|---|---|---|---|
+| `ACTIVE` | `CACHED` | `PLACEMENT_EVICT` | relevance score below threshold for `N` consecutive frames; no pending speculation on the state | move to cache index; keep guard | [DECISION-PENDING] for `N` and threshold function |
+| `CACHED` | `ACTIVE` | `REQUEST_HIT` | guard check passes | reuse cached content; increment use counter | [DECISION] (ADR pending) |
+| `CACHED` | `STALE` | `REQUEST_HIT` | guard check fails | discard cached content; log reason | [DECISION] (ADR pending) |
+| `CACHED` | `STALE` | `CACHE_CAPACITY` | cache over budget; selected by eviction policy | discard; log | [DECISION-PENDING] for eviction policy (LRU vs hotness-weighted LRU) |
+| `ACTIVE` | `QUARANTINED` | `BOUNDARY_VIOLATION` | predicate of a documented or measured boundary is false | record boundary ID; submit RSB request | [DECISION] (ADR pending) |
+| `ACTIVE` | `QUARANTINED` | `BOUNDARY_VIOLATION_INFERRED` | boundary `confidence = inferred` | record boundary ID or log only | [DECISION-PENDING]: inferred boundaries quarantine, or only log? |
+| `QUARANTINED` | `OVERRIDDEN` | `RSB_RESOLVED` | candidate passes bound check | record override; schedule at synchronization boundary | [DECISION] (ADR pending) |
+| `QUARANTINED` | `QUARANTINED` | `RSB_FAILED` | RSB returns no valid candidate | keep current contents; apply retry policy | [DECISION-PENDING]: retry count, and what happens after the final failure |
+| `OVERRIDDEN` | `ACTIVE` | `OVERRIDE_APPLIED` | at synchronization boundary | replace contents; clear `speculation_id` | [DECISION] (ADR pending) |
 
-Side-effecting operations (fences, semaphores, queries, CPU readbacks, presentation) are never removed by any filter.
+Any `(from, event)` pair not in this table is an illegal transition. Debug builds assert (`HIKARI_ASSERT`). Release builds log and refuse the transition. [DECISION] (ADR pending)
 
-**Freeze mode.** Relevance and hotness are frozen for a window of N frames (default 60, configurable) and then re-enabled. Hotness contributes only after a delay of M frames. This breaks the feedback cycle between RSB choices and the bounds that constrain them.
+**Missing pairs (all 32 remaining `(state, event)` pairs out of `5 states × 8 events = 40` total combinations;note `CACHED + REQUEST_HIT` has 2 conditional rows in the table above, covering 8 distinct `(state, event)` pairs):**
+- **From `ACTIVE` (5 unlisted events):**
+  - `(ACTIVE, REQUEST_HIT)`: state is already `ACTIVE`; whether a read hit on an `ACTIVE` state is a no-op that increments hotness or an illegal transition event is [DECISION-PENDING] (Option 1: no-op + hotness update; Option 2: `REQUEST_HIT` is emitted only for `CACHED` states and asserts on `ACTIVE`).
+  - `(ACTIVE, CACHE_CAPACITY)`: illegal transition (debug assert, release log and refuse); capacity eviction applies only to `CACHED` states. [DECISION] (ADR pending)
+  - `(ACTIVE, RSB_RESOLVED)`: illegal transition (debug assert, release log and refuse); `ACTIVE` state has no open quarantine request. [DECISION] (ADR pending)
+  - `(ACTIVE, RSB_FAILED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+  - `(ACTIVE, OVERRIDE_APPLIED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+- **From `CACHED` (6 unlisted events):**
+  - `(CACHED, PLACEMENT_EVICT)`: illegal transition (debug assert, release log and refuse); state is already `CACHED`. [DECISION] (ADR pending)
+  - `(CACHED, BOUNDARY_VIOLATION)`: illegal transition (debug assert, release log and refuse); boundary checks run only on `ACTIVE` states (Step 6). [DECISION] (ADR pending)
+  - `(CACHED, BOUNDARY_VIOLATION_INFERRED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+  - `(CACHED, RSB_RESOLVED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+  - `(CACHED, RSB_FAILED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+  - `(CACHED, OVERRIDE_APPLIED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+- **From `STALE` (all 8 events: `PLACEMENT_EVICT`, `REQUEST_HIT`, `CACHE_CAPACITY`, `BOUNDARY_VIOLATION`, `BOUNDARY_VIOLATION_INFERRED`, `RSB_RESOLVED`, `RSB_FAILED`, `OVERRIDE_APPLIED`):**
+  - Whether `STALE` is a terminal tombstoned state (all 8 events illegal, slot reclaimed by pool generation bump) or allows re-initialization on a new producer write is [DECISION-PENDING] (Option 1: terminal state, all 8 events assert in debug and refuse in release, new writes allocate a new `StateId` generation; Option 2: add a `REINITIALIZE` transition from `STALE` to `ACTIVE`).
+- **From `QUARANTINED` (6 unlisted events):**
+  - `(QUARANTINED, PLACEMENT_EVICT)`: illegal transition (debug assert, release log and refuse); states with pending speculation/quarantine cannot be evicted to `CACHED`. [DECISION] (ADR pending)
+  - `(QUARANTINED, REQUEST_HIT)`: how reads of a `QUARANTINED` state while RSB is still running are modeled is [DECISION-PENDING] (Option 1: no lifecycle event is fired and execution reads current contents per Step 7; Option 2: self-transition `(QUARANTINED, REQUEST_HIT) -> QUARANTINED` that increments hotness and attaches the frame's speculation marker).
+  - `(QUARANTINED, CACHE_CAPACITY)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+  - `(QUARANTINED, BOUNDARY_VIOLATION)`: whether a second boundary violation on an already-`QUARANTINED` state is coalesced or queued is [DECISION-PENDING] (Option 1: coalesce/ignore while `QUARANTINED`; Option 2: append `BoundaryId` to a per-state violation list).
+  - `(QUARANTINED, BOUNDARY_VIOLATION_INFERRED)`: [DECISION-PENDING] (same options as `(QUARANTINED, BOUNDARY_VIOLATION)`).
+  - `(QUARANTINED, OVERRIDE_APPLIED)`: illegal transition (debug assert, release log and refuse); state must transition to `OVERRIDDEN` via `RSB_RESOLVED` first. [DECISION] (ADR pending)
+- **From `OVERRIDDEN` (7 unlisted events):**
+  - `(OVERRIDDEN, PLACEMENT_EVICT)`: illegal transition (debug assert, release log and refuse); pending override must be applied before eviction. [DECISION] (ADR pending)
+  - `(OVERRIDDEN, REQUEST_HIT)`: behavior when an operation reads an `OVERRIDDEN` state before the synchronization boundary is reached is [DECISION-PENDING] (Option 1: read pre-override contents and mark frame `SPECULATIVE` until `OVERRIDE_APPLIED`; Option 2: force immediate synchronization boundary if within the same command list).
+  - `(OVERRIDDEN, CACHE_CAPACITY)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
+  - `(OVERRIDDEN, BOUNDARY_VIOLATION)`: [DECISION-PENDING] (Option 1: illegal because boundary checks only run after `OVERRIDE_APPLIED` returns the state to `ACTIVE`; Option 2: transition back to `QUARANTINED` if pre-override contents trigger another boundary check).
+  - `(OVERRIDDEN, BOUNDARY_VIOLATION_INFERRED)`: [DECISION-PENDING] (same options as `(OVERRIDDEN, BOUNDARY_VIOLATION)`).
+  - `(OVERRIDDEN, RSB_RESOLVED)`: illegal transition (debug assert, release log and refuse); override is already resolved. [DECISION] (ADR pending)
+  - `(OVERRIDDEN, RSB_FAILED)`: illegal transition (debug assert, release log and refuse). [DECISION] (ADR pending)
 
-**Semantic IR [hypothesis, contract].** The only interface between frontend and executor. Contains no GPU-generation-specific detail. Versioned (§6.4). Speculative nodes are tracked by status and can be invalidated individually.
+### 7.5 Guard checks and reactivation
 
-**Vulkan executor [standard].** Pure execution. Receives IR, looks up pipelines by semantic hash in the cache, compiles on miss, records and submits command buffers, and presents. Makes no semantic decisions. Pipeline and shader caches are required from the first working version.
+- A cached state carries its guard from the moment it is evicted (`ACTIVE -> CACHED`). [DECISION] (ADR pending)
+- `DirtyRangeGuard` is checked against the memory layer's dirty-range log since `epoch`. The dirty-range log format is [DECISION-PENDING]:
+  - *Option A (per-page bitmap with epoch counter per page):* $O(1)$ bit test per 4 KiB page in range and fixed memory overhead proportional to guest address space size, but coarse 4 KiB false-positive granularity for small buffers.
+  - *Option B (sorted interval tree / append-only interval list per epoch):* exact byte-range precision and memory proportional to write count since `epoch`, but $O(\log M + K)$ lookup cost per guard check and requires arena compaction on epoch rollover.
+- `VersionGuard` is checked against the resource's current monotonic version in the context model (`current_version == expected_version`). [DECISION] (ADR pending)
+- `SyncGuard` is checked against the frame's barrier ordering log (`barrier_op_index` preserved between producer and consumer). [DECISION] (ADR pending)
+- A reactivation (`CACHED -> ACTIVE` on `REQUEST_HIT`) that passes every guard must still re-verify the `content_hash` of the restored state against the recorded `content_hash`. A mismatch is treated as a guard failure (`CACHED -> STALE`). [DECISION] (ADR pending)
+- Guard check cost is unmeasured. [HYPOTHESIS] H5 (`tests/bench/h5_guard_check_bench`, metric: guard check time per request, p99, on the test corpus vs fresh state resolution time).
 
-**Reference path [standard].** Capture → executor, with no RSB, no ERG, no speculation. Produces the ground-truth frame hashes. It must be runnable in CI for every test capture.
+### 7.6 Hardware boundary specs
 
-**Validator [hypothesis].** Compares the main path's output hashes against the reference path, per frame and per region. Modes: `full` (default in early phases), `sampled` (later phases), `off` (release builds, only after zero mismatches are demonstrated on the test corpus).
+Each hardware boundary spec record contains:
+- `boundary_id`: strong identifier (`BoundaryId`). [STANDARD]
+- `generation`: target GPU generation (`Maxwell`, `Ampere`, or other). [DECISION] (ADR pending)
+- `predicate`: a machine-checkable boolean expression over `SemanticState` fields (`kind`, `format`, `dimensions`, `binding_flags`), never free text. [DECISION] (ADR pending)
+- `source`: hardware documentation reference, measurement test ID, or `"none"`. [DECISION] (ADR pending)
+- `confidence`: enum `{documented, measured, inferred}`. [DECISION] (ADR pending)
+- `verified_by`: repository test ID or `none`. [DECISION] (ADR pending)
 
-**Checkpoint and rollback [standard/hypothesis].** Snapshots are taken at safe synchronization points (end of render pass, fence signal, readback). On mismatch: roll back to the last verified checkpoint, invalidate speculative nodes from that point, and replay the capture with verified state. Rollback cost is measured and reported; it is not assumed to be cheap.
+Rules:
+- A boundary spec with `confidence = documented` or `confidence = measured` may quarantine an `ACTIVE` state (`ACTIVE -> QUARANTINED`). [DECISION] (ADR pending)
+- Whether a boundary spec with `confidence = inferred` may not quarantine a state until promoted to `measured` or `documented` is [DECISION-PENDING] (Option 1: `inferred` specs never quarantine and only emit diagnostic counters; Option 2: `inferred` specs quarantine in experimental mode only).
+- A boundary spec only answers "can this state exist on this hardware." It never answers "does this emulation match the hardware." That question is answered only by the reference path (§7.10). [DECISION] (ADR pending)
 
-**Confidence and backoff.** A mismatch lowers confidence for the resource class involved and switches that class to conservative mode (no speculation) for K frames. Confidence recovers gradually. This prevents oscillation between guessing and failing.
+### 7.7 Override semantics
 
-### 7.4 Invariants (must hold; violations are bugs)
+Each override record contains:
+- `spec_id`: `SpecId` of the RSB resolution. [DECISION] (ADR pending)
+- `state_id`: `StateId` of the quarantined state being overridden. [DECISION] (ADR pending)
+- `frame_index_at_quarantine`: `FrameIndex` when `ACTIVE -> QUARANTINED` occurred. [DECISION] (ADR pending)
+- `frame_index_at_override`: `FrameIndex` when `OVERRIDDEN -> ACTIVE` (`OVERRIDE_APPLIED`) occurred. [DECISION] (ADR pending)
+- `hash_before`: `XXH3-128` `content_hash` of the quarantined state prior to override. [DECISION] (ADR pending)
+- `hash_after`: `XXH3-128` `content_hash` of the state after applying the RSB candidate. [DECISION] (ADR pending)
+- `affected_regions`: list of render target tile-grid regions (§6.3) touched by operations that read `state_id` while speculative. [DECISION] (ADR pending)
+- `speculative_frames`: list of `(FrameIndex, FrameStatus)` markers for every frame that used `state_id` between `frame_index_at_quarantine` and `frame_index_at_override`. [DECISION] (ADR pending)
 
-1. Capture is a deterministic function of its input.
-2. HCT never removes a candidate that is valid on the target hardware.
-3. Relevance never removes a node.
-4. Every speculative node is traceable to its `spec_id`, guard, and candidate set.
-5. The executor makes no semantic decisions.
-6. The reference path is independent of RSB, ERG, speculative caches, and freeze/relevance state.
-7. Side-effecting operations are never removed.
-8. IR nodes are immutable after emission, except for the status field of speculative nodes.
-9. Frame output is a function of (capture, configuration, seed). Non-determinism is a test failure.
+Override timing: an override is applied only at a synchronization boundary. The choice of synchronization boundary is [DECISION-PENDING]:
+- *Option 1 (end of the current render pass that reads the state):* lower latency (override takes effect within the same frame for subsequent render passes; 0 additional frames carry a stale speculation marker if RSB resolves before render-pass end), but requires splitting IR packets at render-pass boundaries and invalidating mid-frame pipeline bindings.
+- *Option 2 (next frame boundary):* simpler frame-atomic state replacement and IR emission, at the cost of at least 1 full frame of latency (minimum 1 to $M$ frames carrying a stale speculation marker while RSB runs across frame boundaries).
 
-### 7.5 Context model: what is tracked
+Frames already presented while speculative are not retroactively changed; they are recorded as `presented-speculative` in the override log. [DECISION] (ADR pending)
 
-| Field | Tracked by | Used by |
-|---|---|---|
-| Resource value (format, dims, bindings) | Frontend | RSB, HCT |
-| Resource version | Frontend | Guards, ERG liveness |
-| Ordering vs barriers / render passes | Capture writer | RSB, ERG |
-| Sync state (writer, readers, fences) | Capture writer | RSB, ERG, guards |
-| Dirty guest ranges | Memory layer | RSB, checkpoint |
-| Hotness / history | ERG | Relevance only (ordering) |
+### 7.8 Frame status and presentation
+
+Each frame carries a status enum:
+- `CLEAN`: no speculative or quarantined states were read during the frame. [DECISION] (ADR pending)
+- `SPECULATIVE`: at least one speculative/quarantined state was read during the frame and has not yet been overridden. [DECISION] (ADR pending)
+- `RESOLVED_PENDING_RECORD`: all speculative states used by the frame have been overridden after use, and the override log entry is pending commit. [DECISION] (ADR pending)
+
+Presentation policy for `SPECULATIVE` frames is [DECISION-PENDING]:
+- *Option 1 (present `SPECULATIVE` frames with a visual/diagnostic region marker):* zero presentation stall latency, at the cost of visible regional artifacts on screen; measurable by per-region hash diff count against the reference path.
+- *Option 2 (hold `SPECULATIVE` frames until RSB resolution and override application):* prevents presenting unverified speculative regions, at the cost of added presentation latency (unbounded if RSB resolution stalls or fails); measurable by p99 frame time and stall duration.
+- *Option 3 (present `SPECULATIVE` frames without marking):* listed for completeness only; rejected for research output because it hides speculative regions and prevents attribution of mismatches. [DECISION] (ADR pending)
+
+### 7.9 Vulkan executor contract
+
+Each IR packet sent from the GPU frontend thread to the executor thread contains:
+- `packet_id`: monotonically increasing `uint64` packet sequence number. [DECISION] (ADR pending)
+- `frame_index`: `FrameIndex` (`uint64`) to which the packet belongs. [DECISION] (ADR pending)
+- `status`: packet tag `{FINAL, SPECULATIVE}`. [DECISION] (ADR pending)
+- `referenced_spec_ids`: span of `SpecId` values read by operations in this packet. [DECISION] (ADR pending)
+- `operations`: ordered span of versioned Semantic IR operations (§6.4). [DECISION] (ADR pending)
+
+Executor rules:
+- Consumes packets in strict `packet_id` order; out-of-order arrival is a fatal invariant error. [DECISION] (ADR pending)
+- Never mutates an IR packet after receipt. [DECISION] (ADR pending)
+- Pipeline cache key is the semantic hash (`XXH3-128`) of the pipeline-relevant state. [DECISION] (from §4.2, ADR pending)
+- On override (`OVERRIDE_APPLIED`), every recorded command buffer that references the overridden `spec_id` is marked invalid and re-recorded. Re-record cost is unmeasured: [HYPOTHESIS] H6 (`tests/bench/h6_command_buffer_rerecord_bench`, metric: re-record time per override, p99, on the test corpus).
+- The executor has no path to RSB and never invokes RSB. [DECISION] (ADR pending)
+
+### 7.10 Reference path as the only accuracy oracle
+
+- The reference path runs the same capture with no state tracker, no ERG `CACHED` placement, no RSB, and no speculation. [DECISION] (ADR-0001)
+- Accuracy of any run is defined strictly as frame-hash equality with the reference path, per frame and per region (§6.3). [DECISION] (ADR-0001)
+- An unresolved read in the capture (a state read before any write, with no capture entry that defines it) is a reported error (`ErrorCode::kInvalidArgument`) in the reference path, never a guess. [DECISION] (ADR-0001; tested on Fixture D in `tests/golden/rsb_erg_diff_test.cpp`)
+
+### 7.11 Hypotheses with falsification tests
+
+| ID | Statement | Falsifying Test ID | Metric | Pass Criterion | Tag |
+|---|---|---|---|---|---|
+| **H1** | "H1: reactivation of a `CACHED` state whose guard passes yields the same frame hash as a fresh resolve from the capture." | `tests/golden/h1_cached_reactivation_diff_test` | Per-frame and per-region `XXH3-128` hash mismatch count between cached-reactivated run and fresh-resolve reference run | `0` hash mismatches across all frames and regions in the test corpus | [HYPOTHESIS] |
+| **H2** | "H2: after an override is applied at the synchronization boundary, the frame hash converges to the reference hash within `K` frames." (`K` is [DECISION-PENDING]) | `tests/fault/h2_override_convergence_test` | Number of frames after `frame_index_at_override` until per-frame hash equals reference path hash | Convergence frame delta $\le K$ for 100% of injected/quarantined overrides | [HYPOTHESIS] |
+| **H3** | "H3: a documented boundary spec flags every state whose reference-path hash is wrong for that boundary." | `tests/fault/h3_boundary_coverage_test` | Count of states with a reference-path mismatch on a documented boundary where the boundary predicate evaluated to true (unflagged) | `0` unflagged states among states causing a boundary mismatch | [HYPOTHESIS] |
+| **H4** | "H4: presenting `SPECULATIVE` frames costs less p99 frame time than holding them." (Unmeasured) | `tests/bench/h4_speculative_presentation_bench` | p99 frame time (ms) under present-marked policy vs hold-until-resolved policy on identical capture + seed | `p99(present_marked) < p99(hold_until_resolved)` on pinned benchmark profile | [HYPOTHESIS] |
+| **H5** | "H5: guard checks are cheaper than re-resolving the state." (Unmeasured) | `tests/bench/h5_guard_check_bench` | p99 guard check time per request (ns) vs p99 fresh state decode/resolve time (ns) on the test corpus | `p99(guard_check) < p99(fresh_resolve)` on pinned benchmark profile | [HYPOTHESIS] |
+| **H6** | "H6: re-recording invalidated command buffers costs less than a full frame re-record." (Unmeasured) | `tests/bench/h6_command_buffer_rerecord_bench` | p99 command-buffer re-record time per override (us) vs p99 full-frame command-buffer record time (us) | `p99(override_rerecord) < p99(full_frame_record)` on pinned benchmark profile | [HYPOTHESIS] |
+| **H7** | "H7: relevance-driven `CACHED` placement does not change the frame hash of any frame." | `tests/golden/h7_relevance_placement_diff_test` | Differential frame-hash mismatch count between relevance-caching enabled and reference path | `0` frame-hash mismatches across the entire test corpus | [HYPOTHESIS] |
+
+### 7.12 Conflicts with §8.2 phase gates and §5 concurrency
+
+Do not edit §8.2 or §5 silently; the table below records every conflict between the runtime model in §7.1–§7.11 and the rest of this document:
+
+| Location | Existing Text | Conflict with §7.1–§7.11 Runtime Model | Status |
+|---|---|---|---|
+| **§8.2 Phase 0** (line 337) & `docs/results/phase0.md` | "Phase 0: replay of one deterministic capture produces identical hashes across 3 runs." | Phase 0 and `docs/results/phase0.md` test only capture format v1 and the stateless operation-stream reference replay; they do not cover the state tracker, `ACTIVE`/`CACHED` lifecycle placement, boundary quarantine, overrides, or guards (`VersionGuard`, `DirtyRangeGuard`, `SyncGuard`). | [DECISION-PENDING] |
+| **§8.2 Phase 2** (line 339) | "Phase 2: false-prune rate is 0 on the corpus (HCT + liveness only, no speculation)." | In the new model (§7.1 Step 4, §7.4), ERG moves states from `ACTIVE` to `CACHED` (`PLACEMENT_EVICT`) and from `CACHED` to `STALE` (`CACHE_CAPACITY`). It is undefined whether moving a state from `ACTIVE` to `CACHED` (or evicting it to `STALE`) counts as a "prune" for the Phase 2 false-prune rate metric. | [DECISION-PENDING] |
+| **§8.2 Phase 3** (line 340) | "Phase 3: bound-violation rate is 0; speculation mismatch rate is measured and recorded." | Previously RSB was invoked only on missing dependencies with HCT pre-filtering candidates; in §7.1 Step 6–7 and §7.4, RSB is triggered by `BOUNDARY_VIOLATION` (`ACTIVE -> QUARANTINED`) while execution continues with the quarantined state's current contents until `OVERRIDE_APPLIED`. | [DECISION-PENDING] |
+| **§8.2 Phase 4** (line 341) & old Invariant 3 | "Phase 4: relevance either reduces cost without increasing mismatch, or is removed." / old §7.3 "Relevance: orders candidates by hotness and history. Never removes." | In §7.1 Step 4 and §7.4 (`PLACEMENT_EVICT`), relevance score below threshold for `N` frames removes a state from the `ACTIVE` set and places it in `CACHED`. Relevance therefore changes `ACTIVE` set membership rather than only ordering RSB candidates, requiring hypothesis H7 to test that `CACHED` placement never alters frame hashes. | [DECISION-PENDING] |
+| **§5.1 Threads** (lines 143–147) & **§5.2 Rules** (line 152) |Lists 5 threads (CPU, GPU frontend, Executor, Validator, Services) and forbids blocking/locks on the GPU frontend hot path. | Step 3 allows a dedicated state tracker thread ([DECISION-PENDING]), and Step 7–8 describes RSB returning asynchronously ("Execution continues with the quarantined state's current contents... When RSB returns, the override is recorded"), which implies an RSB worker thread or async queue not listed in §5.1. | [DECISION-PENDING] |
+| **§6.4 Semantic IR versioning** (lines 177–178) | "Speculative nodes carry status: `pending`, `verified`, `invalid`." | §7.4 defines 5 state lifecycle states (`ACTIVE`, `CACHED`, `STALE`, `QUARANTINED`, `OVERRIDDEN`), §7.8 defines 3 frame statuses (`CLEAN`, `SPECULATIVE`, `RESOLVED_PENDING_RECORD`), and §7.9 defines 2 IR packet statuses (`FINAL`, `SPECULATIVE`). Mapping between §6.4's per-node `{pending, verified, invalid}` and §7.4/§7.8/§7.9 is unspecified. | [DECISION-PENDING] |
 
 ---
 

@@ -29,8 +29,9 @@ void* operator new(std::size_t size) {
         allocation_counter().fetch_add(1U, std::memory_order_relaxed);
     }
     const std::size_t bytes = size == 0U ? 1U : size;
-    // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory) operator new
-    void* ptr = std::malloc(bytes);
+    // clang-format off
+    void* ptr = std::malloc(bytes); // NOLINT(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory): global operator new delegates to malloc
+    // clang-format on
     if (ptr == nullptr) {
         throw std::bad_alloc{};
     }
@@ -38,13 +39,15 @@ void* operator new(std::size_t size) {
 }
 
 void operator delete(void* ptr) noexcept {
-    // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory) operator delete
-    std::free(ptr);
+    // clang-format off
+    std::free(ptr); // NOLINT(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory): global operator delete delegates to free
+    // clang-format on
 }
 
 void operator delete(void* ptr, std::size_t /*size*/) noexcept {
-    // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory) operator delete
-    std::free(ptr);
+    // clang-format off
+    std::free(ptr); // NOLINT(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory): global operator delete delegates to free
+    // clang-format on
 }
 
 int main() {

@@ -36,6 +36,7 @@ endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/capture)
+add_subdirectory(src/rsb)
 add_subdirectory(src/validate)
 add_subdirectory(tools/capdump)
 add_subdirectory(tests/unit)

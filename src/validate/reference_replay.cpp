@@ -129,15 +129,10 @@ auto process_record(const capture::CaptureRecordView& rec, ReplayState& state,
 
 } // namespace
 
-auto replay_semantic_hashes(std::span<const std::byte> capture_bytes,
+auto replay_semantic_hashes(const capture::CaptureReader& reader,
                             std::span<FrameSemanticHash> out_frames) noexcept
     -> core::Result<std::size_t> {
-    const auto reader = capture::CaptureReader::open(capture_bytes);
-    if (!reader) {
-        return std::unexpected{reader.error()};
-    }
-
-    auto cursor = reader->cursor();
+    auto cursor = reader.cursor();
     ReplayState state{};
 
     while (true) {
@@ -157,11 +152,21 @@ auto replay_semantic_hashes(std::span<const std::byte> capture_bytes,
     if (state.in_frame) {
         return core::make_error(core::ErrorCode::kUnexpectedEof, "capture ended with open frame");
     }
-    if (state.frame_count != reader->header().frame_count) {
+    if (state.frame_count != reader.header().frame_count) {
         return core::make_error(core::ErrorCode::kInvalidArgument, "capture frame_count mismatch");
     }
 
     return state.frame_count;
+}
+
+auto replay_semantic_hashes(std::span<const std::byte> capture_bytes,
+                            std::span<FrameSemanticHash> out_frames) noexcept
+    -> core::Result<std::size_t> {
+    const auto reader = capture::CaptureReader::open(capture_bytes);
+    if (!reader) {
+        return std::unexpected{reader.error()};
+    }
+    return replay_semantic_hashes(*reader, out_frames);
 }
 
 } // namespace hikari::validate

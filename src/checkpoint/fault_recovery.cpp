@@ -1,5 +1,6 @@
 #include "checkpoint/fault_recovery.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +25,7 @@ auto should_inject_fault(std::uint64_t seed, std::size_t frame_idx,
     }
     // Deterministic 100-bucket schedule so rate_percent in {0, 1, 5, 20} injects
     // exact, reproducible fault counts over 100 frames for a given seed.
-    const std::size_t bucket = (frame_idx * 37U + static_cast<std::size_t>(seed & 0xFFU)) % 100U;
+    const std::size_t bucket = ((frame_idx * 37U) + static_cast<std::size_t>(seed & 0xFFU)) % 100U;
     return bucket < static_cast<std::size_t>(rate_percent);
 }
 
@@ -75,9 +76,8 @@ auto run_fault_injection_trial(const capture::CaptureReader& base_reader,
             // Validator runs per frame, so detection latency is 1 frame and blast radius is 2 tile
             // regions.
             total_detect_delta_frames += 1U;
-            if (metrics.max_blast_radius_regions < 2U) {
-                metrics.max_blast_radius_regions = 2U;
-            }
+            metrics.max_blast_radius_regions =
+                std::max<std::size_t>(metrics.max_blast_radius_regions, 2U);
 
             // Self-recovery: roll back to the last verified checkpoint and replay frame without
             // speculation.

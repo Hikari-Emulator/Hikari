@@ -14,6 +14,17 @@
 
 namespace {
 
+void verify_fault_metrics(std::uint32_t rate, const hikari::checkpoint::FaultInjectionMetrics& m) {
+    HIKARI_CHECK(m.detected_faults == m.injected_faults);
+    HIKARI_CHECK(m.rollbacks_completed == m.injected_faults);
+    HIKARI_CHECK(m.unrecovered_mismatches == 0U);
+    if (rate == 0U) {
+        HIKARI_CHECK(m.injected_faults == 0U);
+    } else {
+        HIKARI_CHECK(m.injected_faults > 0U);
+    }
+}
+
 auto run_fault_suite(const std::vector<std::string_view>& args) -> int {
     const auto fix_a = hikari::capture::build_synthetic_fixture();
     HIKARI_CHECK(fix_a.has_value());
@@ -37,14 +48,7 @@ auto run_fault_suite(const std::vector<std::string_view>& args) -> int {
     for (const std::uint32_t rate : rates) {
         const auto m = hikari::checkpoint::run_fault_injection_trial(*reader, rate, 100U);
         HIKARI_CHECK(m.has_value());
-        HIKARI_CHECK(m->detected_faults == m->injected_faults);
-        HIKARI_CHECK(m->rollbacks_completed == m->injected_faults);
-        HIKARI_CHECK(m->unrecovered_mismatches == 0U);
-        if (rate == 0U) {
-            HIKARI_CHECK(m->injected_faults == 0U);
-        } else {
-            HIKARI_CHECK(m->injected_faults > 0U);
-        }
+        verify_fault_metrics(rate, *m);
 
         std::println("{},{},{},{},{},{},{},{},{}", m->fault_rate_percent, m->total_frames,
                      m->injected_faults, m->detected_faults, m->rollbacks_completed,

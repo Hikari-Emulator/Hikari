@@ -58,6 +58,32 @@ auto StateTracker::find_latest(core::ResourceId resource_id) const noexcept
 
 namespace {
 
+auto append_packet_operation(ir::IrPacket& current, const capture::CaptureRecordView& rec,
+                             const validate::RsbErgFrameOutcome& frame_info, std::uint32_t op_index,
+                             StateTracker& tracker) -> core::Result<void> {
+    if (frame_info.nodes_removed_by_liveness > 0U && op_index == 1U &&
+        rec.tag == capture::RecordTag::kClearOp) {
+        return {};
+    }
+    if (current.operation_count >= current.operations.size() || rec.payload.size() > 32U) {
+        return core::make_error(core::ErrorCode::kOverflow,
+                                "gpu::frontend: IR packet capacity exceeded");
+    }
+    ir::IrOperation op{};
+    op.op_index = op_index;
+    op.tag = rec.tag;
+    op.flags = rec.flags;
+    op.format = rec.tag == capture::RecordTag::kDrawPatternOp ? rsb::ResourceFormat::kR32Uint
+                                                              : rsb::ResourceFormat::kRgba8Unorm;
+    const auto tracked =
+        tracker.record_write(core::ResourceId{.index = 1U, .generation = 1U}, op.format, op_index);
+    op.produced_state_id = tracked.state_id;
+    op.payload_size = rec.payload.size();
+    std::ranges::copy(rec.payload, op.inline_payload.begin());
+    current.operations.at(current.operation_count++) = op;
+    return {};
+}
+
 auto build_frame_packets(const capture::CaptureReader& reader,
                          const validate::RsbErgReplayOutcome& rsb_erg, StateTracker& tracker)
     -> core::Result<std::vector<ir::IrPacket>> {
@@ -104,29 +130,11 @@ auto build_frame_packets(const capture::CaptureReader& reader,
         case capture::RecordTag::kDrawPatternOp:
         case capture::RecordTag::kSampleOp: {
             ++op_index;
-            // If ERG liveness pruned the first write in Fixture E Frame 0, skip emitting dead op 1.
             const auto& frame_info = rsb_erg.frames.at(frame_idx);
-            if (frame_info.nodes_removed_by_liveness > 0U && op_index == 1U &&
-                rec.tag == capture::RecordTag::kClearOp) {
-                break;
+            const auto app = append_packet_operation(current, rec, frame_info, op_index, tracker);
+            if (!app) {
+                return std::unexpected{app.error()};
             }
-            if (current.operation_count >= current.operations.size() || rec.payload.size() > 32U) {
-                return core::make_error(core::ErrorCode::kOverflow,
-                                        "gpu::frontend: IR packet capacity exceeded");
-            }
-            ir::IrOperation op{};
-            op.op_index = op_index;
-            op.tag = rec.tag;
-            op.flags = rec.flags;
-            op.format = rec.tag == capture::RecordTag::kDrawPatternOp
-                            ? rsb::ResourceFormat::kR32Uint
-                            : rsb::ResourceFormat::kRgba8Unorm;
-            const auto tracked = tracker.record_write(
-                core::ResourceId{.index = 1U, .generation = 1U}, op.format, op_index);
-            op.produced_state_id = tracked.state_id;
-            op.payload_size = rec.payload.size();
-            std::ranges::copy(rec.payload, op.inline_payload.begin());
-            current.operations.at(current.operation_count++) = op;
             break;
         }
         case capture::RecordTag::kEndFrame: {

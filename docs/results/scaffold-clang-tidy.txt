@@ -1,0 +1,80 @@
+[1/39] Processing file /home/lux/Hikari-Emulator/src/capture/fixture.cpp.
+7831 warnings generated.
+[2/39] Processing file /home/lux/Hikari-Emulator/src/capture/reader.cpp.
+17005 warnings generated.
+[3/39] Processing file /home/lux/Hikari-Emulator/src/capture/writer.cpp.
+24893 warnings generated.
+[4/39] Processing file /home/lux/Hikari-Emulator/src/checkpoint/checkpoint.cpp.
+32778 warnings generated.
+[5/39] Processing file /home/lux/Hikari-Emulator/src/checkpoint/fault_recovery.cpp.
+42335 warnings generated.
+[6/39] Processing file /home/lux/Hikari-Emulator/src/checkpoint/speculative_override.cpp.
+51360 warnings generated.
+[7/39] Processing file /home/lux/Hikari-Emulator/src/core/assert.cpp.
+52169 warnings generated.
+[8/39] Processing file /home/lux/Hikari-Emulator/src/core/hash.cpp.
+66852 warnings generated.
+[9/39] Processing file /home/lux/Hikari-Emulator/src/cpu/cpu_backend.cpp.
+73493 warnings generated.
+[10/39] Processing file /home/lux/Hikari-Emulator/src/erg/erg.cpp.
+83477 warnings generated.
+[11/39] Processing file /home/lux/Hikari-Emulator/src/erg/hct_stub.cpp.
+91893 warnings generated.
+[12/39] Processing file /home/lux/Hikari-Emulator/src/erg/placement_policy.cpp.
+100960 warnings generated.
+[13/39] Processing file /home/lux/Hikari-Emulator/src/exec/gfx/executor.cpp.
+110523 warnings generated.
+[14/39] Processing file /home/lux/Hikari-Emulator/src/exec/specialized_selector.cpp.
+117141 warnings generated.
+[15/39] Processing file /home/lux/Hikari-Emulator/src/gpu/frontend/frontend.cpp.
+126769 warnings generated.
+[16/39] Processing file /home/lux/Hikari-Emulator/src/gpu/gen/generations.cpp.
+133367 warnings generated.
+[17/39] Processing file /home/lux/Hikari-Emulator/src/gpu/hct/hct.cpp.
+140010 warnings generated.
+[18/39] Processing file /home/lux/Hikari-Emulator/src/ir/ir_packet.cpp.
+146627 warnings generated.
+[19/39] Processing file /home/lux/Hikari-Emulator/src/loader/loader.cpp.
+156233 warnings generated.
+[20/39] Processing file /home/lux/Hikari-Emulator/src/rsb/rsb.cpp.
+164677 warnings generated.
+[21/39] Processing file /home/lux/Hikari-Emulator/src/runtime/frame_loop.cpp.
+180488 warnings generated.
+[22/39] Processing file /home/lux/Hikari-Emulator/src/runtime/hikari_run_main.cpp.
+195288 warnings generated.
+[23/39] Processing file /home/lux/Hikari-Emulator/src/services/service_host.cpp.
+200623 warnings generated.
+[24/39] Processing file /home/lux/Hikari-Emulator/src/validate/reference_replay.cpp.
+208506 warnings generated.
+[25/39] Processing file /home/lux/Hikari-Emulator/src/validate/ref_replay_main.cpp.
+223305 warnings generated.
+[26/39] Processing file /home/lux/Hikari-Emulator/src/validate/rsb_erg_replay.cpp.
+232927 warnings generated.
+[27/39] Processing file /home/lux/Hikari-Emulator/tests/fault/fault_injection_test.cpp.
+247618 warnings generated.
+[28/39] Processing file /home/lux/Hikari-Emulator/tests/golden/determinism_test.cpp.
+260070 warnings generated.
+[29/39] Processing file /home/lux/Hikari-Emulator/tests/golden/fixture_relations_test.cpp.
+272522 warnings generated.
+[30/39] Processing file /home/lux/Hikari-Emulator/tests/golden/h7_relevance_placement_diff_test.cpp.
+285053 warnings generated.
+[31/39] Processing file /home/lux/Hikari-Emulator/tests/golden/rsb_erg_diff_test.cpp.
+297506 warnings generated.
+[32/39] Processing file /home/lux/Hikari-Emulator/tests/golden/speculative_override_test.cpp.
+309996 warnings generated.
+[33/39] Processing file /home/lux/Hikari-Emulator/tests/integration/runtime_scaffold_test.cpp.
+322453 warnings generated.
+[34/39] Processing file /home/lux/Hikari-Emulator/tests/unit/capture_test.cpp.
+334905 warnings generated.
+[35/39] Processing file /home/lux/Hikari-Emulator/tests/unit/lifecycle_typestate_test.cpp.
+347057 warnings generated.
+[36/39] Processing file /home/lux/Hikari-Emulator/tests/unit/replay_alloc_test.cpp.
+360584 warnings generated.
+[37/39] Processing file /home/lux/Hikari-Emulator/tests/unit/rsb_erg_test.cpp.
+373037 warnings generated.
+[38/39] Processing file /home/lux/Hikari-Emulator/tests/unit/specialized_selector_test.cpp.
+385531 warnings generated.
+[39/39] Processing file /home/lux/Hikari-Emulator/tools/capdump/main.cpp.
+400330 warnings generated.
+Suppressed 400338 warnings (400330 in non-user code, 8 NOLINT).
+Use -header-filter=.* or leave it as default to display errors from all non-system headers. Use -system-headers to display errors from system headers as well.

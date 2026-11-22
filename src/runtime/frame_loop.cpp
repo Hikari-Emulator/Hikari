@@ -92,7 +92,10 @@ auto execute_packets_threaded_spsc(std::span<const ir::IrPacket> packets,
 auto FrameLoop::run_capture(const capture::CaptureReader& reader, const RuntimeConfig& config)
     -> core::Result<RuntimeRunReport> {
     services::MinimalServiceHost service_host;
-    (void)service_host.query_clock_ticks();
+    const auto ticks = service_host.query_clock_ticks();
+    if (!ticks) {
+        return std::unexpected{ticks.error()};
+    }
 
     gpu::frontend::StateTracker tracker;
     const auto packets = gpu::frontend::emit_ir_packets_from_capture(reader, config.seed, tracker);

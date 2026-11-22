@@ -143,7 +143,7 @@ template <LifecycleState S> class TypedState {
 public:
     explicit constexpr TypedState(rsb::StateId id) noexcept : id_(id) {}
 
-    [[nodiscard]] static constexpr auto state() noexcept -> LifecycleState {
+    [[nodiscard]] constexpr auto state() const noexcept -> LifecycleState {
         return S;
     }
 

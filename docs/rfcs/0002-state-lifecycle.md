@@ -89,3 +89,21 @@ Any `(from, event)` pair not in this table is an illegal transition. Debug build
 | **H5** | "H5: guard checks are cheaper than re-resolving the state." (Unmeasured) | `tests/bench/h5_guard_check_bench` | p99 guard check time per request (ns) vs p99 fresh state decode/resolve time (ns) on the test corpus | `p99(guard_check) < p99(fresh_resolve)` on pinned benchmark profile | [HYPOTHESIS] |
 | **H6** | "H6: re-recording invalidated command buffers costs less than a full frame re-record." (Unmeasured) | `tests/bench/h6_command_buffer_rerecord_bench` | p99 command-buffer re-record time per override (us) vs p99 full-frame command-buffer record time (us) | `p99(override_rerecord) < p99(full_frame_record)` on pinned benchmark profile | [HYPOTHESIS] |
 | **H7** | "H7: relevance-driven `CACHED` placement does not change the frame hash of any frame." | `tests/golden/h7_relevance_placement_diff_test` | Differential frame-hash mismatch count between relevance-caching enabled and reference path | `0` frame-hash mismatches across the entire test corpus | [HYPOTHESIS] |
+
+---
+
+## Implementation Notes (From Exploratory Scaffolding)
+
+- **Compile-time transition table and typestate (`src/erg/lifecycle.hpp`, tested by `unit.lifecycle_typestate` in `tests/unit/lifecycle_typestate_test.cpp`):**
+  - Because `CACHED + REQUEST_HIT` has two conditional rows in the table above (guard pass $\to$ `ACTIVE`, guard fail $\to$ `STALE`), encoding the transition table as a purely compile-time `(state, event)` lookup required splitting `REQUEST_HIT` into two event enumerators (`kRequestHitPass` and `kRequestHitFail`), yielding $5 \times 9 = 45$ `(state, event)` pairs (`9` legal, `36` illegal):
+    ```text
+    lifecycle_typestate_test: total_pairs=45 legal=9 illegal=36 status=MATCH
+    ```
+  - Compile-time typestate guarantees (`TypedState<S>::transition<E>()`) hold for single-state transition chains and end at the homogeneous container boundary (`std::vector<ErgNode>`), where the compile-time tag `S` is erased into the runtime `LifecycleState` field.
+- **Hypothesis H7 on synthetic fixtures A–E (`src/erg/placement_policy.cpp`, tested by `golden.h7_relevance_placement_diff` in `tests/golden/h7_relevance_placement_diff_test.cpp`):**
+  - Comparing `AlwaysActivePlacementPolicy` (`policy_off`) against `ThresholdPlacementPolicy{15}` (`policy_on`) produced `0` frame-hash mismatches across all frames of synthetic fixtures A, B, C, D, and E (`status=MATCH`).
+- **Hypothesis H2 on synthetic fixture A (`src/checkpoint/speculative_override.cpp`, tested by `golden.speculative_override` in `tests/golden/speculative_override_test.cpp`):**
+  - When a state is quarantined on Frame 0 and the override is applied at the next-frame synchronization boundary (Frame 1), Frame 0's speculative hash differs from the reference hash (`differs=true`) and converges at Frame 1 (`frames_until_convergence=1`):
+    ```text
+    spec_override_summary quarantine_frame=0 override_frame=1 converged_frame=1 frames_until_convergence=1
+    ```

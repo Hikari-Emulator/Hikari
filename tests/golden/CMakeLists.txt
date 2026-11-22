@@ -57,3 +57,15 @@ target_link_libraries(hikari_golden_h7_relevance_placement_diff_test
 )
 
 add_test(NAME golden.h7_relevance_placement_diff COMMAND hikari_golden_h7_relevance_placement_diff_test)
+
+add_executable(hikari_golden_speculative_override_test
+    speculative_override_test.cpp
+)
+
+target_link_libraries(hikari_golden_speculative_override_test
+    PRIVATE
+        hikari_checkpoint
+        hikari_warnings
+)
+
+add_test(NAME golden.speculative_override COMMAND hikari_golden_speculative_override_test)

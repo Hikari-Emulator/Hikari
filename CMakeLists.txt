@@ -35,3 +35,4 @@ if(NOT glfw3_FOUND AND NOT TARGET glfw)
 endif()
 
 add_subdirectory(src/core)
+add_subdirectory(src/capture)

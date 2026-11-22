@@ -7,11 +7,8 @@ namespace hikari::core::detail {
 } // namespace hikari::core::detail
 
 #define HIKARI_CHECK(cond)                                                                         \
-    do {                                                                                           \
-        if (!(cond)) {                                                                             \
-            ::hikari::core::detail::abort_with_diagnostic(#cond, __FILE__, __LINE__);              \
-        }                                                                                          \
-    } while (false)
+    ((cond) ? static_cast<void>(0)                                                                 \
+            : ::hikari::core::detail::abort_with_diagnostic(#cond, __FILE__, __LINE__))
 
 #ifndef NDEBUG
 #define HIKARI_ASSERT(cond) HIKARI_CHECK(cond)

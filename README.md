@@ -1,63 +1,60 @@
 # Hikari
 
-**A Research-Oriented Yuzu-like Nintendo Switch Emulator**
+Hikari is a research project investigating bounded speculative semantic reconstruction for Nintendo Switch emulation, built around a versioned Semantic IR and an Execution Relevance Graph (ERG).
 
-> *Illuminating only what matters — Recursive semantic understanding for efficient Vulkan execution.*
+## Status
 
----
+Hikari is an early-stage research prototype and cannot run games. Every architectural and performance claim in this repository is a **hypothesis** until a reproducible test in this repository demonstrates it. Measured results—including negative results—are recorded in `docs/results/`.
 
-## Philosophy
+## Hypothesis
 
-Hikari is not just another Switch emulator. It is an experimental architecture project that explores **semantic understanding**, **recursive definition** (inspired by how human language works), and **dynamic relevance pruning**.
+A hardware-derived bound (the Hardware Capability Table, HCT) combined with a proof-based liveness filter can keep speculative GPU state reconstruction safe, verified against a non-speculative reference path.
 
-Instead of caching everything like traditional emulators, Hikari only keeps **relevant states** and actively destroys irrelevant ones using the **Execution Relevance Graph (ERG)**.
+## Design
 
-### Core Innovations
-
-- **Semantic IR** — Operations represented by meaning, not just raw opcodes
-- **Recursive Semantic Bootstrapper (RSB)** — A meta-analysis engine that recursively defines and evolves concepts at runtime
-- **Execution Relevance Graph (ERG)** — Graph-based system for intelligent resource lifetime management
-- **Dynamic State Evolution** — Ability to create, replace, and merge states in real time
-- **Pure Desktop Vulkan** — No Android support. Focused on performance and efficiency on desktop hardware (including older GPUs like Pascal)
-
----
+- **Semantic IR** — A versioned, GPU-generation-independent representation of decoded operations and their dependencies. Speculative nodes carry explicit `spec_id` and guard predicates.
+- **RSB (Bounded Hypothesis)** — Generates speculative state candidates only within the set permitted by the HCT and ERG when a dependency is incomplete.
+- **ERG (Execution Relevance Graph)** — Three ordered filters:
+  1. *Liveness*: removes only operations proven dead (never side-effecting operations).
+  2. *Hardware bound*: removes candidates that violate the HCT.
+  3. *Relevance*: orders remaining candidates by hotness and history; **never removes** nodes.
+- **Reference path** — A non-speculative path (capture → executor, bypassing RSB and ERG) used as the ground-truth oracle for differential validation.
 
 ## Goals
 
-- Be **Yuzu-like** in spirit (accurate emulation, modularity, game preservation) but fully independent in architecture
-- Push the boundaries of metaprogramming and semantic analysis in emulation
-- Achieve better resource efficiency through intelligent relevance pruning
-- Serve as a well-documented research project
+- Accurate, modular emulation with a verifiable, independent architecture
+- Measured resource efficiency, with both positive and negative experimental results published
+- Well-documented research with explicit invariants, RFCs, and ADRs
 
----
+## Scope
 
-## Current Status
+- **Platform:** Desktop Vulkan only (no Android support).
+- **Inputs:** Homebrew, original test ROMs, conformance suites, and user-owned captures only. No tooling for dumping, decrypting, or extracting commercial game data or keys.
+- **Roadmap:** Maxwell (Switch 1) frontend and Vulkan executor first; Switch 2 and Ampere support are out of scope until the Semantic IR contract is frozen.
 
-**Very Early Stage (Research & Prototyping)**
+## Building
 
-- Core architecture is under active design
-- Semantic IR, RSB, and ERG are in development
-- Not yet capable of running games
-- Current focus: Building the intelligent runtime system first
+### Requirements
 
----
-
-## Requirements:
-
-- CMake 3.24 or higher
-- C++23 compliant compiler (Clang 18+ recommended)
+- CMake 3.25 or higher
+- Clang 18 or higher with C++23 support (primary compiler; GCC 13+ secondary)
 - Vulkan SDK
 - GLFW 3
 
-___
+### Commands
 
-## Project Structure
+```bash
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug
+```
 
-- `hikari-runtime/` — Core intelligence (Semantic, RSB, ERG, Scheduler, Authority)
-- `hikari-vulkan/` — Vulkan execution backend
-- `hikari-gpu/` — GPU command processing & semantic capture
-- `hikari-cpu/` — CPU emulation layer
-- `research/` — Experiments, benchmarks, and graph visualizations
-- `docs/` — Architecture and philosophy documentation
+Available presets: `debug`, `release`, `relwithdebinfo`, `asan`, `ubsan`, `tsan`.
 
----
+## Layout
+
+See [`AGENTS.md`](AGENTS.md) §7.2 for the full module layout (`src/`, `tools/`, `tests/`, `data/`, `docs/`, `third_party/`).
+
+## License
+
+GPL-3.0. See [`LICENSE`](LICENSE) for details.

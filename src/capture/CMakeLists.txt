@@ -1,4 +1,5 @@
 add_library(hikari_capture STATIC
+    fixture.cpp
     reader.cpp
     writer.cpp
 )

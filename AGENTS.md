@@ -468,6 +468,7 @@ A phase is not complete until its gate is green in CI and the result is recorded
 - Architectural decisions are recorded as ADRs in `docs/decisions/` (context, decision, consequences, status).
 - Reviewers check: memory ownership, hot-path allocations, concurrency boundaries, metaprogramming necessity, determinism, and whether the change weakens any invariant.
 - A PR that weakens the reference path, adds unverified claims to docs, or introduces nondeterminism is rejected regardless of other merits.
+- Human-written and AI-assisted code are held to the same evidence and comparator standards; see `docs/decisions/0004-contributor-policy.md`.
 
 ---
 

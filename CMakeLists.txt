@@ -33,3 +33,5 @@ find_package(glfw3 REQUIRED)
 if(NOT glfw3_FOUND AND NOT TARGET glfw)
     message(FATAL_ERROR "GLFW 3 (glfw3) is required but was not found.")
 endif()
+
+add_subdirectory(src/core)

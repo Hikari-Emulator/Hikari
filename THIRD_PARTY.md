@@ -19,3 +19,23 @@ All third-party dependencies must be pinned by commit hash in `third_party/` or 
 | zydis (`externals/zydis`) | Subtree in dynarmic `9d4582339990d4eae53f1dc7160686920fc2075c` (tree `8e460786d99b8c9694f8b533675bc0d7326e3b4c`) | `The MIT License (MIT)` (`Copyright (c) 2014-2021 Florian Bernd`, `Copyright (c) 2014-2021 Joel Höner` in `third_party/dynarmic/externals/zydis/LICENSE`) | `https://github.com/zyantific/zydis.git` via dynarmic subtree (mirror; upstream not verified) | x86_64 disassembler used by dynarmic (`x86_64` host) | `git -C /tmp/dyn-pin show 9d4582339990d4eae53f1dc7160686920fc2075c:externals/zydis/LICENSE` |
 | oaknut (`externals/oaknut`) | Subtree in dynarmic `9d4582339990d4eae53f1dc7160686920fc2075c` (tree `bfd0ee848b1e792dd6dca46808ab18065589380d`) | `MIT License` (`Copyright (c) 2022 merryhime <https://mary.rs>` in `third_party/dynarmic/externals/oaknut/LICENSE`) | `https://github.com/merryhime/oaknut.git` via dynarmic subtree (mirror; upstream not verified) | ARM64 JIT assembler backend for dynarmic (`arm64` host) | `git -C /tmp/dyn-pin show 9d4582339990d4eae53f1dc7160686920fc2075c:externals/oaknut/LICENSE` |
 | biscuit (`externals/biscuit`) | Subtree in dynarmic `9d4582339990d4eae53f1dc7160686920fc2075c` (tree `1b57769095324c4bf30076fd170b9d4bb67de256`) | MIT License text (`Copyright 2021 Lioncash/Lioncache` in `third_party/dynarmic/externals/biscuit/LICENSE.md`) | `https://github.com/lioncash/biscuit.git` via dynarmic subtree (mirror; upstream not verified) | RISC-V JIT assembler backend for dynarmic (`riscv` host) | `git -C /tmp/dyn-pin show 9d4582339990d4eae53f1dc7160686920fc2075c:externals/biscuit/LICENSE.md` |
+| fmt (FetchContent override) | `11.1.4` (`123913715afeb8a437e6388b4473fcc4753e1c9a`) | MIT-style license (`Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors` in `LICENSE`) | `https://github.com/fmtlib/fmt.git` | Replaces dynarmic's bundled `fmt` at configure time so `FMT_STRING` compile-time checks remain enabled under Clang 22.1.8 | `git -C /tmp/fmt-pin cat-file -e 123913715afeb8a437e6388b4473fcc4753e1c9a` |
+
+## Dynarmic Build Integration Notes
+
+- **Compiler tested:**
+  ```text
+  clang version 22.1.8
+  Target: x86_64-pc-linux-gnu
+  Thread model: posix
+  InstalledDir: /usr/bin
+  ```
+- **Build command:**
+  `cmake -S . -B build/dyn -G Ninja -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCMAKE_BUILD_TYPE=Debug && cmake --build build/dyn --target dynarmic`
+- **Scoped flags and options (`third_party/CMakeLists.txt` only):**
+  - `DYNARMIC_TESTS=OFF`, `DYNARMIC_USE_BUNDLED_EXTERNALS=ON`, `DYNARMIC_FRONTENDS="A64"`, `DYNARMIC_WARNINGS_AS_ERRORS=OFF`, `BUILD_SHARED_LIBS=OFF`.
+  - `FMT_TEST=OFF`, `FMT_DOC=OFF`, `FMT_INSTALL=ON`, `MCL_INSTALL=ON`.
+  - `CMAKE_POLICY_VERSION_MINIMUM=3.5` set immediately before `add_subdirectory(dynarmic)` and `unset()` immediately after (required because `externals/robin-map/CMakeLists.txt` specifies `cmake_minimum_required(VERSION 3.1)`).
+  - No `-w` or `-Wno-error` flags were needed or applied. `hikari_warnings` remains attached to all Hikari targets.
+- **Build-time patches (`third_party/patches/`):**
+  - `third_party/patches/0001-mcl-lift-sequence-integer-sequence.patch`: applied at configure time to a build-tree copy (`${CMAKE_CURRENT_BINARY_DIR}/mcl-src`) via `git apply`, leaving `third_party/dynarmic/externals/mcl/` untouched. Adds an explicit `lift_sequence_impl<std::integer_sequence<T, values...>>` partial specialization to `include/mcl/mp/typelist/lift_sequence.hpp` for Clang 22.1.8.

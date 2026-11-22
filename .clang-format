@@ -1,0 +1,45 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++23
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignOperands: Align
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+BreakBeforeBraces: Attach
+NamespaceIndentation: None
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<([a-z0-9_]+\.h|sys/.*|linux/.*|unistd\.h|fcntl\.h|pthread\.h)>$'
+    Priority: 1
+    SortPriority: 1
+  - Regex: '^<[^.]+>$'
+    Priority: 2
+    SortPriority: 2
+  - Regex: '^<.*>$'
+    Priority: 3
+    SortPriority: 3
+  - Regex: '.*'
+    Priority: 4
+    SortPriority: 4
+
+SortIncludes: CaseSensitive
+SortUsingDeclarations: true
+SpaceBeforeParens: ControlStatements
+...

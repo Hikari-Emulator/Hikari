@@ -65,3 +65,16 @@ target_link_libraries(hikari_unit_lifecycle_typestate_test
 )
 
 add_test(NAME unit.lifecycle_typestate COMMAND hikari_unit_lifecycle_typestate_test)
+
+add_executable(hikari_unit_cpu_interpreter_test
+    cpu_interpreter_test.cpp
+)
+
+target_link_libraries(hikari_unit_cpu_interpreter_test
+    PRIVATE
+        hikari_cpu
+        hikari_core
+        hikari_warnings
+)
+
+add_test(NAME unit.cpu_interpreter COMMAND hikari_unit_cpu_interpreter_test)

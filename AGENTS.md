@@ -10,7 +10,6 @@ Hikari is a research emulator. Its central claim (bounded speculative semantic r
 
 - **Evidence over assertion.** Do not state that a component works, is faster, or is correct without a reproducible test, benchmark, or hash comparison that you ran and can point to.
 - **Reference path is sacred.** The non-speculative reference path (capture → executor, no RSB, no ERG) must always build, run, and remain selectable at runtime. Never remove it, never route it through RSB/ERG/caches.
-- **Scope.** Work only with homebrew, original test ROMs, conformance suites, and captures produced from hardware or software the contributor is entitled to use. Do not add tooling for dumping, decrypting, or extracting commercial game data or keys. Do not add code that circumvents platform protections.
 - **Don't widen scope silently.** Switch 2 support, commercial game compatibility, and performance targets are out of scope for Phase 0–2 (see §9). Do not start them as side effects of other work.
 - **Small, verifiable changes.** One logical change per commit. Each change states which phase and which invariant it affects.
 

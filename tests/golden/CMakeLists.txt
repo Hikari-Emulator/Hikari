@@ -69,3 +69,16 @@ target_link_libraries(hikari_golden_speculative_override_test
 )
 
 add_test(NAME golden.speculative_override COMMAND hikari_golden_speculative_override_test)
+
+add_executable(hikari_golden_cpu_oracle_test
+    cpu_oracle_test.cpp
+)
+
+target_link_libraries(hikari_golden_cpu_oracle_test
+    PRIVATE
+        hikari_cpu
+        hikari_core
+        hikari_warnings
+)
+
+add_test(NAME golden.cpu_oracle COMMAND hikari_golden_cpu_oracle_test)

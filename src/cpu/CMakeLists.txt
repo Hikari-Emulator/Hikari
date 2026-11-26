@@ -10,5 +10,6 @@ target_link_libraries(hikari_cpu
     PUBLIC
         hikari_core
     PRIVATE
+        dynarmic
         hikari_warnings
 )

@@ -42,10 +42,10 @@ Decisions are recorded in [`docs/decisions/`](docs/decisions/). Open decisions a
 
 ## Scope
 
-- **Platform:** desktop Vulkan only.
-- **Inputs:** homebrew, original test ROMs, conformance suites, and user-owned captures. No tooling for dumping, decrypting, or extracting commercial game data or keys.
-- **Targets:** Switch 1 (Maxwell) first. Switch 2 and Ampere are out of scope until the Semantic IR contract is frozen.
-- **CPU profiles:** `switch1_a57` and `switch2_a78c` are hypothesis profiles that set an assumed guest feature set. They are not validated against hardware.
+- **Platform:** Desktop Vulkan only.
+- **Inputs:** The emulator must use only ROMs and game dumps legally obtained and supplied by the user.
+- **Targets:** Nintendo Switch 1 (Maxwell) is the initial target. Nintendo Switch 2 (Ampere) support is out of scope until the Semantic IR contract is frozen.
+- **CPU profiles:** `switch1_a57` and `switch2_a78c` are experimental profiles that define assumed guest CPU feature sets. These assumptions have not been validated against physical hardware and must not be treated as verified hardware specifications.
 
 ## Building
 
